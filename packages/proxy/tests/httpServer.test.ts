@@ -1,0 +1,487 @@
+/**
+ * Integration tests for the Fastify HTTP server (P6).
+ *
+ * Uses a real WebSocket echo server on an ephemeral port.
+ * The SsrfGuard is replaced with a no-op fake so loopback is allowed.
+ */
+import type { AddressInfo } from "node:net";
+import type { BridgeEnvelope } from "@https2wss/protocol";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { WebSocketServer } from "ws";
+import type { ServerConfig } from "../src/config/serverConfig.js";
+import type { HttpServer } from "../src/httpServer.js";
+import { createHttpServer } from "../src/httpServer.js";
+import { buildAuth } from "../src/security/auth.js";
+import { SsrfGuard } from "../src/security/ssrfGuard.js";
+import { UpstreamPolicy } from "../src/security/upstreamPolicy.js";
+import { SessionManager } from "../src/sessions/SessionManager.js";
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
+const VALID_TOKEN = "test-token-abcdef";
+const AUTH = `Bearer ${VALID_TOKEN}`;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/** Create a no-op SsrfGuard that allows loopback (required for echo tests). */
+function makeFakeSsrfGuard(): SsrfGuard {
+  const fake = Object.create(SsrfGuard.prototype) as SsrfGuard;
+  (fake as unknown as { assertAllowed: () => Promise<void> }).assertAllowed = () =>
+    Promise.resolve();
+  return fake;
+}
+
+/** Start an echo WebSocket server on a random port. Returns server + url. */
+async function startEchoServer(): Promise<{ wss: WebSocketServer; url: string; port: number }> {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise<void>((res) => wss.on("listening", res));
+  const { port } = wss.address() as AddressInfo;
+  wss.on("connection", (ws) => {
+    ws.on("message", (data, isBinary) => {
+      ws.send(data, { binary: isBinary });
+    });
+  });
+  return { wss, url: `ws://127.0.0.1:${port}`, port };
+}
+
+/** Build a minimal ServerConfig for tests. */
+function makeConfig(echoWsUrl: string): ServerConfig {
+  return {
+    server: { host: "127.0.0.1", port: 0 },
+    security: {
+      requireAuth: true,
+      tokens: [{ value: VALID_TOKEN }],
+      cors: { allowedOrigins: [], allowCredentials: false },
+      upstreamPolicy: {
+        default: "deny",
+        allowDirectUrl: false,
+        allow: [
+          {
+            name: "echo",
+            adapter: "websocket",
+            url: echoWsUrl,
+            allowedHeaders: [],
+            allowPrivateNetwork: true,
+          },
+          {
+            name: "unreachable",
+            adapter: "websocket",
+            url: "ws://127.0.0.1:1", // port 1 is always refused
+            allowedHeaders: [],
+            allowPrivateNetwork: true,
+          },
+        ],
+      },
+    },
+    sessions: {
+      idleTimeoutMs: 60_000,
+      maxDurationMs: 3_600_000,
+      maxSessionsPerToken: 20,
+      maxFrameBytes: 1_048_576,
+      maxBufferedFrames: 1_000,
+      maxBufferedBytes: 16_777_216,
+      overflowPolicy: "close",
+      tickIntervalMs: 60_000, // disable automatic tick in tests
+    },
+    transports: {
+      enabled: ["sse", "long_poll", "poll"],
+      sse: { heartbeatIntervalMs: 50 }, // fast for tests
+      longPoll: { maxTimeoutMs: 500 }, // short for tests
+    },
+    logging: { level: "error", redactHeaders: ["authorization", "cookie"] },
+  };
+}
+
+/** Build a server with the echo profile wired up. */
+function makeServer(echoWsUrl: string): HttpServer {
+  const config = makeConfig(echoWsUrl);
+
+  const sessionManager = new SessionManager({
+    sessionDefaults: {
+      idleTimeoutMs: config.sessions.idleTimeoutMs,
+      maxDurationMs: config.sessions.maxDurationMs,
+      frameBuffer: {
+        maxFrameBytes: config.sessions.maxFrameBytes,
+        maxBufferedFrames: config.sessions.maxBufferedFrames,
+        maxBufferedBytes: config.sessions.maxBufferedBytes,
+        overflowPolicy: "close",
+      },
+    },
+    maxSessionsPerToken: config.sessions.maxSessionsPerToken,
+  });
+
+  const auth = buildAuth({
+    requireAuth: config.security.requireAuth,
+    tokens: config.security.tokens,
+  });
+
+  const upstreamPolicy = new UpstreamPolicy(config.security.upstreamPolicy);
+  const ssrfGuard = makeFakeSsrfGuard();
+
+  return createHttpServer({ config, sessionManager, upstreamPolicy, auth, ssrfGuard });
+}
+
+// ── Test context ───────────────────────────────────────────────────────────
+
+let echo: { wss: WebSocketServer; url: string; port: number };
+let server: HttpServer;
+let baseUrl: string;
+
+beforeEach(async () => {
+  echo = await startEchoServer();
+  server = makeServer(echo.url);
+  await server.start();
+  baseUrl = `http://127.0.0.1:${server.port()}`;
+});
+
+afterEach(async () => {
+  await server.stop();
+  // Terminate all clients before closing the WS server so it doesn't hang
+  for (const client of echo.wss.clients) {
+    client.terminate();
+  }
+  await new Promise<void>((res) => echo.wss.close(() => res()));
+});
+
+// ── Utility functions ──────────────────────────────────────────────────────
+
+async function createSession(
+  profile = "echo",
+  token = AUTH,
+  mode: "sse" | "long_poll" | "poll" = "sse",
+): Promise<{
+  sessionId: string;
+  transport: { selected: string; sendUrl: string; receiveUrl: string };
+}> {
+  const res = await fetch(`${baseUrl}/v1/sessions`, {
+    method: "POST",
+    headers: { authorization: token, "content-type": "application/json" },
+    body: JSON.stringify({
+      protocol: "https2wss",
+      version: 1,
+      transport: { mode, fallbacks: ["long_poll", "poll"] },
+      upstream: { adapter: "websocket", profile },
+    }),
+  });
+  if (!res.ok) {
+    const body = (await res.json()) as unknown;
+    throw new Error(`createSession failed: ${res.status} ${JSON.stringify(body)}`);
+  }
+  return res.json() as Promise<{
+    sessionId: string;
+    transport: { selected: string; sendUrl: string; receiveUrl: string };
+  }>;
+}
+
+async function sendFrame(
+  sessionId: string,
+  payload: { opcode: string; encoding: string; data: string; fin: boolean },
+  seq = 1,
+  token = AUTH,
+): Promise<void> {
+  const envelope: BridgeEnvelope = {
+    v: 1,
+    sid: sessionId,
+    seq,
+    kind: "data",
+    ts: new Date().toISOString(),
+    payload,
+  };
+  const res = await fetch(`${baseUrl}/v1/sessions/${sessionId}/send`, {
+    method: "POST",
+    headers: { authorization: token, "content-type": "application/json" },
+    body: JSON.stringify({ frames: [envelope] }),
+  });
+  if (!res.ok) throw new Error(`send failed: ${res.status}`);
+}
+
+async function pollOnce(
+  sessionId: string,
+  after = 0,
+  timeoutMs = 300,
+  token = AUTH,
+): Promise<{ frames: BridgeEnvelope[]; nextAfter: number; state: string }> {
+  const url = `${baseUrl}/v1/sessions/${sessionId}/poll?after=${after}&timeoutMs=${timeoutMs}`;
+  const res = await fetch(url, { headers: { authorization: token } });
+  return res.json() as Promise<{ frames: BridgeEnvelope[]; nextAfter: number; state: string }>;
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────
+
+describe("POST /v1/sessions", () => {
+  it("1 — returns 401 with AUTH_REQUIRED when no auth header", async () => {
+    const res = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        protocol: "https2wss",
+        version: 1,
+        transport: { mode: "sse", fallbacks: [] },
+        upstream: { adapter: "websocket", profile: "echo" },
+      }),
+    });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("AUTH_REQUIRED");
+    expect(res.headers.get("www-authenticate")).toBe("Bearer");
+  });
+
+  it("2 — returns 401 with AUTH_INVALID when token is wrong", async () => {
+    const res = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer wrong-token-xxxx",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        protocol: "https2wss",
+        version: 1,
+        transport: { mode: "sse", fallbacks: [] },
+        upstream: { adapter: "websocket", profile: "echo" },
+      }),
+    });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("AUTH_INVALID");
+  });
+
+  it("3 — returns 403 with UPSTREAM_NOT_ALLOWED for disallowed profile", async () => {
+    const res = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: { authorization: AUTH, "content-type": "application/json" },
+      body: JSON.stringify({
+        protocol: "https2wss",
+        version: 1,
+        transport: { mode: "sse", fallbacks: [] },
+        upstream: { adapter: "websocket", profile: "not-in-allow-list" },
+      }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("UPSTREAM_NOT_ALLOWED");
+  });
+
+  it("4 — creates session for echo profile and returns sessionId + transport", async () => {
+    const data = await createSession("echo");
+    expect(typeof data.sessionId).toBe("string");
+    expect(data.sessionId).toMatch(/^h2w_/);
+    expect(["sse", "long_poll", "poll"]).toContain(data.transport.selected);
+    expect(data.transport.sendUrl).toContain(data.sessionId);
+    expect(data.transport.receiveUrl).toContain(data.sessionId);
+  });
+});
+
+describe("echo via long-poll", () => {
+  it("5 — send text 'hello' and poll returns the echo", async () => {
+    const { sessionId } = await createSession("echo", AUTH, "long_poll");
+
+    // Wait a little for the upstream_open frame to arrive in the buffer
+    await new Promise<void>((res) => setTimeout(res, 50));
+
+    // Drain control frames with after=0
+    const initial = await pollOnce(sessionId, 0, 200);
+    const afterSeq = initial.nextAfter;
+
+    await sendFrame(sessionId, { opcode: "text", encoding: "utf8", data: "hello", fin: true }, 1);
+
+    // Poll for the echo
+    let echo: BridgeEnvelope | undefined;
+    for (let attempt = 0; attempt < 10 && echo === undefined; attempt++) {
+      const result = await pollOnce(sessionId, afterSeq, 300);
+      echo = result.frames.find((f): boolean => f.kind === "data");
+    }
+
+    expect(echo).toBeDefined();
+    const payload = echo?.payload as { opcode: string; data: string };
+    expect(payload.opcode).toBe("text");
+    expect(payload.data).toBe("hello");
+  });
+});
+
+describe("echo via SSE", () => {
+  it("6 — send text 'hello' and SSE stream returns the echo frame", async () => {
+    const { sessionId, transport } = await createSession("echo", AUTH, "sse");
+
+    // Wait a brief moment for the upstream to open
+    await new Promise<void>((res) => setTimeout(res, 30));
+
+    // Open SSE stream
+    const eventsUrl = `${baseUrl}${transport.receiveUrl}?after=0`;
+    const sseRes = await fetch(eventsUrl, {
+      headers: { authorization: AUTH },
+    });
+    expect(sseRes.ok).toBe(true);
+    expect(sseRes.headers.get("content-type")).toContain("text/event-stream");
+
+    // Send text frame
+    await sendFrame(sessionId, { opcode: "text", encoding: "utf8", data: "hello", fin: true }, 1);
+
+    // Read SSE stream until we get the data frame
+    if (sseRes.body === null) throw new Error("SSE response body is null");
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let dataFrame: BridgeEnvelope | null = null;
+
+    const readWithTimeout = new Promise<BridgeEnvelope | null>((resolve) => {
+      const timer = setTimeout(() => {
+        reader.cancel().catch(() => {});
+        resolve(null);
+      }, 3000);
+
+      (async () => {
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const events = buf.split("\n\n");
+            buf = events.pop() ?? "";
+            for (const event of events) {
+              const dataLine = event.split("\n").find((l) => l.startsWith("data: "));
+              if (dataLine !== undefined) {
+                try {
+                  const env = JSON.parse(dataLine.slice(6)) as BridgeEnvelope;
+                  if (env.kind === "data") {
+                    clearTimeout(timer);
+                    reader.cancel().catch(() => {});
+                    resolve(env);
+                    return;
+                  }
+                } catch {
+                  // skip parse errors
+                }
+              }
+            }
+          }
+        } catch {
+          // stream closed by cancel
+        }
+        resolve(null);
+      })().catch(() => {});
+    });
+
+    dataFrame = await readWithTimeout;
+    expect(dataFrame).not.toBeNull();
+    const payload = dataFrame?.payload as { opcode: string; data: string };
+    expect(payload.opcode).toBe("text");
+    expect(payload.data).toBe("hello");
+  });
+});
+
+describe("binary frame echo", () => {
+  it("7 — send binary bytes [0,1,2,3,4] and receive base64-encoded echo", async () => {
+    const { sessionId } = await createSession("echo", AUTH, "long_poll");
+
+    // Drain initial control frames
+    await new Promise<void>((res) => setTimeout(res, 50));
+    const initial = await pollOnce(sessionId, 0, 200);
+    const afterSeq = initial.nextAfter;
+
+    const bytes = Uint8Array.from([0, 1, 2, 3, 4]);
+    const b64 = Buffer.from(bytes).toString("base64");
+
+    await sendFrame(sessionId, { opcode: "binary", encoding: "base64", data: b64, fin: true }, 1);
+
+    let echoFrame: BridgeEnvelope | undefined;
+    for (let attempt = 0; attempt < 10 && echoFrame === undefined; attempt++) {
+      const result = await pollOnce(sessionId, afterSeq, 300);
+      echoFrame = result.frames.find((f): boolean => f.kind === "data");
+    }
+
+    expect(echoFrame).toBeDefined();
+    const payload = echoFrame?.payload as { opcode: string; encoding: string; data: string };
+    expect(payload.opcode).toBe("binary");
+    expect(payload.encoding).toBe("base64");
+    expect(payload.data).toBe("AAECAwQ=");
+  });
+});
+
+describe("upstream close propagation", () => {
+  it("8 — upstream close appears as close frame in poll", async () => {
+    const { sessionId } = await createSession("echo", AUTH, "long_poll");
+
+    // Wait for upstream to open
+    await new Promise<void>((res) => setTimeout(res, 50));
+
+    // Drain initial frames
+    const initial = await pollOnce(sessionId, 0, 200);
+    const afterSeq = initial.nextAfter;
+
+    // Close the echo server forcefully — close all connections
+    for (const client of echo.wss.clients) {
+      client.close(1000, "server shutting down");
+    }
+
+    // Poll until we get a close frame (or timeout)
+    let closeFrame: BridgeEnvelope | undefined;
+    for (let attempt = 0; attempt < 15 && closeFrame === undefined; attempt++) {
+      await new Promise<void>((res) => setTimeout(res, 50));
+      const result = await pollOnce(sessionId, afterSeq, 300);
+      closeFrame = result.frames.find((f): boolean => f.kind === "close");
+    }
+
+    expect(closeFrame).toBeDefined();
+    const payload = closeFrame?.payload as { source: string };
+    expect(payload.source).toBe("upstream");
+  });
+});
+
+describe("client close propagation", () => {
+  it("9 — POST /close causes upstream websocket to close", async () => {
+    const { sessionId } = await createSession("echo");
+    await new Promise<void>((res) => setTimeout(res, 50));
+
+    // Track upstream disconnect
+    let upstreamClosed = false;
+    for (const client of echo.wss.clients) {
+      client.on("close", () => {
+        upstreamClosed = true;
+      });
+    }
+
+    const res = await fetch(`${baseUrl}/v1/sessions/${sessionId}/close`, {
+      method: "POST",
+      headers: { authorization: AUTH, "content-type": "application/json" },
+      body: JSON.stringify({ code: 1000, reason: "client done" }),
+    });
+    expect(res.ok).toBe(true);
+    const body = (await res.json()) as { closed: boolean; state: string };
+    expect(body.closed).toBe(true);
+    expect(body.state).toBe("closed");
+
+    // Give time for upstream close to propagate
+    await new Promise<void>((res) => setTimeout(res, 100));
+    expect(upstreamClosed).toBe(true);
+  });
+});
+
+describe("session not found", () => {
+  it("10 — returns 404 for unknown session id", async () => {
+    const res = await fetch(`${baseUrl}/v1/sessions/h2w_doesnotexist1234567/send`, {
+      method: "POST",
+      headers: { authorization: AUTH, "content-type": "application/json" },
+      body: JSON.stringify({ frames: [] }),
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("SESSION_NOT_FOUND");
+  });
+});
+
+describe("GET /healthz", () => {
+  it("11 — returns 200 with status ok (no auth required)", async () => {
+    const res = await fetch(`${baseUrl}/healthz`);
+    expect(res.ok).toBe(true);
+    const body = (await res.json()) as { status: string; sessions: number };
+    expect(body.status).toBe("ok");
+    expect(typeof body.sessions).toBe("number");
+  });
+
+  it("healthz includes active session count", async () => {
+    await createSession("echo");
+    const res = await fetch(`${baseUrl}/healthz`);
+    const body = (await res.json()) as { sessions: number };
+    expect(body.sessions).toBeGreaterThanOrEqual(1);
+  });
+});

@@ -18,18 +18,25 @@ export const corsConfigSchema = z.object({
   allowCredentials: z.boolean().default(false),
 });
 
-export const securityConfigSchema = z.object({
-  requireAuth: z.boolean().default(true),
-  tokens: z.array(tokenSourceSchema).default([]),
-  cors: corsConfigSchema.default({ allowedOrigins: [], allowCredentials: false }),
-  upstreamPolicy: z
-    .object({
-      default: z.enum(["deny", "allow"]).default("deny"),
-      allow: z.array(upstreamProfileSchema).default([]),
-      allowDirectUrl: z.boolean().default(false),
-    })
-    .default({ default: "deny", allow: [], allowDirectUrl: false }),
-});
+export const securityConfigSchema = z
+  .object({
+    requireAuth: z.boolean().default(true),
+    tokens: z.array(tokenSourceSchema).default([]),
+    cors: corsConfigSchema.default({ allowedOrigins: [], allowCredentials: false }),
+    upstreamPolicy: z
+      .object({
+        default: z.enum(["deny", "allow"]).default("deny"),
+        allow: z.array(upstreamProfileSchema).default([]),
+        allowDirectUrl: z.boolean().default(false),
+      })
+      .default({ default: "deny", allow: [], allowDirectUrl: false }),
+  })
+  .default({
+    requireAuth: true,
+    tokens: [],
+    cors: { allowedOrigins: [], allowCredentials: false },
+    upstreamPolicy: { default: "deny", allow: [], allowDirectUrl: false },
+  });
 
 export type SecurityConfig = z.infer<typeof securityConfigSchema>;
 export type UpstreamProfile = z.infer<typeof upstreamProfileSchema>;

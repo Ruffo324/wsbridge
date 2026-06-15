@@ -1,8 +1,11 @@
+export { type LoadConfigOptions, loadConfig } from "./config/loadConfig.js";
 export {
   type SecurityConfig,
   securityConfigSchema,
   type UpstreamProfile,
 } from "./config/securityConfig.js";
+export { type ServerConfig, serverConfigSchema } from "./config/serverConfig.js";
+export { createHttpServer, type HttpServer, type HttpServerDeps } from "./httpServer.js";
 export { buildLogger, type Logger } from "./observability/logger.js";
 export { type AuthVerifier, buildAuth } from "./security/auth.js";
 export { CorsPolicy } from "./security/cors.js";
@@ -24,6 +27,7 @@ export type {
 export { Session } from "./sessions/Session.js";
 export type { CreateSessionInput, SessionManagerConfig } from "./sessions/SessionManager.js";
 export { SessionManager } from "./sessions/SessionManager.js";
+export { errorToHttp } from "./transports/errorMap.js";
 export type {
   UpstreamAdapter,
   UpstreamAdapterFactory,
