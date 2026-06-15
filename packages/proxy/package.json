@@ -17,6 +17,7 @@
   "dependencies": {
     "@https2wss/protocol": "workspace:*",
     "pino": "^9",
+    "ws": "^8",
     "zod": "^4"
   },
   "devDependencies": {
