@@ -3,8 +3,9 @@
   "compilerOptions": {
     "composite": true,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "lib": ["ES2023", "DOM"]
   },
   "include": ["src/**/*"],
-  "references": []
+  "references": [{ "path": "../protocol" }]
 }
