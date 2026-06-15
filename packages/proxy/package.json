@@ -15,6 +15,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@https2wss/protocol": "workspace:*"
+    "@https2wss/protocol": "workspace:*",
+    "pino": "^9",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "pino-pretty": "^11"
   }
 }

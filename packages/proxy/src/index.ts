@@ -1,3 +1,14 @@
+export {
+  type SecurityConfig,
+  securityConfigSchema,
+  type UpstreamProfile,
+} from "./config/securityConfig.js";
+export { buildLogger, type Logger } from "./observability/logger.js";
+export { type AuthVerifier, buildAuth } from "./security/auth.js";
+export { CorsPolicy } from "./security/cors.js";
+export { HeaderPolicy } from "./security/headerPolicy.js";
+export { SSRF_DENY_REASONS, SsrfGuard } from "./security/ssrfGuard.js";
+export { type ResolvedUpstream, UpstreamPolicy } from "./security/upstreamPolicy.js";
 export type { FrameBufferLimits } from "./sessions/FrameBuffer.js";
 export { FrameBuffer } from "./sessions/FrameBuffer.js";
 export { generateSessionId } from "./sessions/ids.js";
