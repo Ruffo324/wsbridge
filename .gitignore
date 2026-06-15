@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.turbo/
+.cache/
+.DS_Store
+coverage/
+*.log
+.vite/
+.vitest-cache/
+.pnpm-store/
+.env*
+.vscode/
