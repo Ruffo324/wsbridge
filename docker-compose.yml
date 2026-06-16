@@ -1,0 +1,50 @@
+services:
+  echo:
+    build:
+      context: .
+      dockerfile: examples/echo/Dockerfile.echo
+    networks: [internal]
+    # No host-port mapping — accessible only by the proxy service via the internal network
+
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      echo:
+        condition: service_started
+    environment:
+      HTTPS2WSS_TOKEN: ${HTTPS2WSS_TOKEN:-dev-token-1234}
+    volumes:
+      - ./examples/echo/config.yml:/app/config.yml:ro
+    ports:
+      - "8080:8080"
+    networks: [internal, public]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  demo:
+    image: nginx:alpine
+    depends_on:
+      proxy:
+        condition: service_healthy
+    volumes:
+      # Serve the browser SSE demo page from /srv/html
+      - ./examples/browser-sse:/srv/html:ro
+      # Compiled client ESM at /srv/lib/client (served at /lib/client/)
+      - ./packages/client/dist:/srv/lib/client:ro
+      # Compiled protocol ESM at /srv/lib/protocol (served at /lib/protocol/)
+      - ./packages/protocol/dist:/srv/lib/protocol:ro
+      # Custom nginx config that serves everything from /srv
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "3000:80"
+    networks: [public]
+
+networks:
+  internal: {}
+  public: {}

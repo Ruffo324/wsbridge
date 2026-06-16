@@ -11,8 +11,12 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "bin": {
+    "https2wss-proxy": "./dist/cli.js"
+  },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "start": "node ./dist/cli.js"
   },
   "dependencies": {
     "@https2wss/protocol": "workspace:*",

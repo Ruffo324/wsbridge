@@ -4,6 +4,7 @@
     { "path": "./packages/protocol" },
     { "path": "./packages/client" },
     { "path": "./packages/proxy" },
-    { "path": "./packages/adapters/home-assistant" }
+    { "path": "./packages/adapters/home-assistant" },
+    { "path": "./examples/echo" }
   ]
 }

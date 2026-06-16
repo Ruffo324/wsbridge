@@ -1,0 +1,6 @@
+FROM node:24-alpine
+WORKDIR /app
+RUN npm install --omit=dev ws@^8
+COPY examples/echo/dist/echoServer.js /app/echoServer.js
+EXPOSE 9001
+CMD ["node", "echoServer.js"]

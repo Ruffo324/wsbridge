@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>https2wss — Browser SSE Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Courier New", Courier, monospace;
+      background: #0e0e0e;
+      color: #d4d4d4;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      min-height: 100vh;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; color: #c8c8c8; }
+    p.subtitle { font-size: 0.8rem; color: #666; margin-bottom: 1.5rem; }
+    .controls { display: flex; flex-direction: column; gap: 0.5rem; width: 100%; max-width: 600px; }
+    .row { display: flex; gap: 0.5rem; }
+    input[type="text"] {
+      flex: 1;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #d4d4d4;
+      padding: 0.4rem 0.6rem;
+      font-family: inherit;
+      font-size: 0.9rem;
+    }
+    button {
+      background: #222;
+      border: 1px solid #444;
+      color: #aaa;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.9rem;
+    }
+    button:hover { border-color: #888; color: #ddd; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    label { font-size: 0.8rem; color: #666; }
+    pre#log {
+      margin-top: 1rem;
+      width: 100%;
+      max-width: 600px;
+      background: #111;
+      border: 1px solid #222;
+      padding: 0.75rem;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      min-height: 200px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .ts { color: #555; }
+    .recv { color: #7ec8a4; }
+    .sent { color: #7ab4d4; }
+    .sys  { color: #b4a47e; }
+    .err  { color: #d47a7a; }
+  </style>
+</head>
+<body>
+  <h1>https2wss — Browser SSE Demo</h1>
+  <p class="subtitle">Standalone browser page — serve from pnpm static or Docker nginx</p>
+
+  <div class="controls">
+    <label for="bridgeUrl">Bridge URL</label>
+    <input id="bridgeUrl" type="text" value="http://localhost:8080" />
+
+    <label for="tokenInput">Auth token</label>
+    <div class="row">
+      <input id="tokenInput" type="text" placeholder="dev-token-1234" />
+    </div>
+
+    <label for="profileInput">Upstream profile
+      <span style="color:#555"> — use <code>echo</code> for standalone, <code>echo-docker</code> for Docker Compose</span>
+    </label>
+    <input id="profileInput" type="text" value="echo-docker" />
+
+    <div class="row">
+      <button id="btnConnect" type="button">Connect</button>
+      <button id="btnDisconnect" type="button" disabled>Disconnect</button>
+    </div>
+
+    <label for="msgInput">Message</label>
+    <div class="row">
+      <input id="msgInput" type="text" placeholder="hello from browser" />
+      <button id="btnSend" type="button" disabled>Send</button>
+    </div>
+  </div>
+
+  <pre id="log"># log output appears here
+</pre>
+
+  <script type="module">
+    // Import from the compiled client package.
+    // When served via `pnpm --filter @https2wss/echo-demo static`: path is mapped to
+    //   packages/client/dist/index.js by staticServer.ts.
+    // When served via Docker nginx: the compose setup bind-mounts packages/client/dist
+    //   so the same path resolves correctly.
+    import { Https2WssSocket } from "/lib/client/index.js";
+
+    const log = document.getElementById("log");
+    const btnConnect = document.getElementById("btnConnect");
+    const btnDisconnect = document.getElementById("btnDisconnect");
+    const btnSend = document.getElementById("btnSend");
+    const bridgeUrlInput = document.getElementById("bridgeUrl");
+    const tokenInput = document.getElementById("tokenInput");
+    const profileInput = document.getElementById("profileInput");
+    const msgInput = document.getElementById("msgInput");
+
+    // Pre-fill from query params if provided: ?bridge=http://...&token=...&profile=echo
+    const params = new URLSearchParams(location.search);
+    if (params.has("bridge")) bridgeUrlInput.value = params.get("bridge");
+    if (params.has("token")) tokenInput.value = params.get("token");
+    if (params.has("profile")) profileInput.value = params.get("profile");
+
+    // Persist token in localStorage
+    const storedToken = localStorage.getItem("https2wss_token");
+    if (storedToken && !tokenInput.value) tokenInput.value = storedToken;
+
+    let socket = null;
+
+    function ts() {
+      return new Date().toISOString().slice(11, 23);
+    }
+
+    function appendLog(cls, text) {
+      log.innerHTML += `<span class="ts">[${ts()}]</span> <span class="${cls}">${text}</span>\n`;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    btnConnect.addEventListener("click", () => {
+      const bridgeUrl = bridgeUrlInput.value.trim();
+      const token = tokenInput.value.trim();
+      const profile = profileInput.value.trim() || "echo-docker";
+      if (!token) { appendLog("err", "Token is required"); return; }
+
+      localStorage.setItem("https2wss_token", token);
+      appendLog("sys", `connecting to ${bridgeUrl} (profile: ${profile}) …`);
+
+      socket = new Https2WssSocket("wss://echo", {
+        bridgeUrl,
+        authToken: token,
+        upstreamProfile: profile,
+      });
+
+      socket.onopen = () => {
+        appendLog("sys", "connected");
+        btnConnect.disabled = true;
+        btnDisconnect.disabled = false;
+        btnSend.disabled = false;
+      };
+
+      socket.onmessage = (ev) => {
+        if (ev.data instanceof ArrayBuffer) {
+          // Binary: display as hex
+          const bytes = new Uint8Array(ev.data);
+          const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join(" ");
+          appendLog("recv", `← [binary] ${hex}`);
+        } else {
+          appendLog("recv", `← ${ev.data}`);
+        }
+      };
+
+      socket.onerror = () => {
+        appendLog("err", "socket error");
+      };
+
+      socket.onclose = (ev) => {
+        appendLog("sys", `disconnected (code ${ev.code})`);
+        btnConnect.disabled = false;
+        btnDisconnect.disabled = true;
+        btnSend.disabled = true;
+        socket = null;
+      };
+    });
+
+    btnDisconnect.addEventListener("click", () => {
+      socket?.close(1000, "user disconnect");
+    });
+
+    btnSend.addEventListener("click", () => {
+      const text = msgInput.value;
+      if (!text || !socket) return;
+      socket.send(text);
+      appendLog("sent", `→ ${text}`);
+    });
+
+    msgInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") btnSend.click();
+    });
+  </script>
+</body>
+</html>

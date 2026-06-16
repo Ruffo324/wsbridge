@@ -33,6 +33,30 @@ importers:
         specifier: ^4
         version: 4.1.8(@types/node@24.13.2)(@vitest/coverage-v8@4.1.8)(vite@8.0.16(@types/node@24.13.2)(esbuild@0.27.7)(tsx@4.22.4)(yaml@2.9.0))
 
+  examples/echo:
+    dependencies:
+      '@https2wss/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@https2wss/proxy':
+        specifier: workspace:*
+        version: link:../../packages/proxy
+      tsx:
+        specifier: ^4
+        version: 4.22.4
+      ws:
+        specifier: ^8
+        version: 8.21.0
+
+  examples/node-client:
+    dependencies:
+      '@https2wss/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      tsx:
+        specifier: ^4
+        version: 4.22.4
+
   packages/adapters/home-assistant: {}
 
   packages/client:

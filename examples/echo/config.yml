@@ -1,0 +1,67 @@
+# https2wss echo demo configuration
+#
+# Two upstream profiles:
+#   echo        — ws://127.0.0.1:9001  (standalone: pnpm demo / proxyServer.ts)
+#   echo-docker — ws://echo:9001       (Docker Compose: proxy connects to "echo" service)
+#
+# Standalone usage (pnpm demo):
+#   The run-demo.mjs script sets STANDALONE=1. proxyServer.ts reads STANDALONE and
+#   keeps the proxy as-is — clients open a session with profile "echo".
+#
+# Docker Compose usage:
+#   The proxy service uses this config via bind mount. Clients (browser demo) connect
+#   using profile "echo-docker" which resolves to the internal docker hostname "echo".
+#   See docker-compose.yml — the demo nginx page defaults to profile "echo-docker".
+#
+# Both profiles have allowPrivateNetwork: true because their upstreams are on
+# loopback (127.0.0.1) or a private Docker network. Production profiles pointing
+# at public WebSocket services should set allowPrivateNetwork: false.
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+security:
+  requireAuth: true
+  tokens:
+    - env: HTTPS2WSS_TOKEN
+  cors:
+    allowedOrigins:
+      - "http://localhost:3000"
+    allowCredentials: false
+  upstreamPolicy:
+    default: deny
+    allowDirectUrl: false
+    allow:
+      - name: echo
+        adapter: websocket
+        url: "ws://127.0.0.1:9001"
+        allowedHeaders: []
+        # allowPrivateNetwork: loopback address used in standalone mode
+        allowPrivateNetwork: true
+
+      - name: echo-docker
+        adapter: websocket
+        url: "ws://echo:9001"
+        allowedHeaders: []
+        # allowPrivateNetwork: private Docker network hostname in compose mode
+        allowPrivateNetwork: true
+
+sessions:
+  idleTimeoutMs: 120000
+  maxDurationMs: 3600000
+  maxSessionsPerToken: 20
+  maxFrameBytes: 1048576
+  maxBufferedFrames: 1000
+  maxBufferedBytes: 16777216
+  overflowPolicy: close
+  tickIntervalMs: 5000
+
+transports:
+  enabled:
+    - sse
+    - long_poll
+    - poll
+
+logging:
+  level: info
