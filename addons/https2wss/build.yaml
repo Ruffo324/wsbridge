@@ -12,5 +12,5 @@ args:
 labels:
   org.opencontainers.image.title: "https2wss"
   org.opencontainers.image.description: "HTTPS/SSE-to-WebSocket bridge for HTTPS-only clients"
-  org.opencontainers.image.source: "https://github.com/<owner>/https2wss-addon"
+  org.opencontainers.image.source: "https://github.com/REPLACE_ME/https2wss"
   org.opencontainers.image.licenses: "MIT"

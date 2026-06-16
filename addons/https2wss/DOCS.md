@@ -14,10 +14,9 @@ networking.
 2. Click the menu (three dots, top right) → **Repositories**.
 3. Add the community repository URL:
    ```
-   https://github.com/<owner>/https2wss-addon
+   https://github.com/REPLACE_ME/https2wss
    ```
-   (Replace `<owner>` with the actual GitHub user/org — the repository owner will fill
-   this in after publishing.)
+   (Replace `REPLACE_ME` with your GitHub user or org name.)
 4. Find **https2wss** in the store and click **Install**.
 
 ## Configuration
