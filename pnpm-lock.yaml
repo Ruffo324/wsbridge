@@ -63,7 +63,18 @@ importers:
         specifier: ^4
         version: 4.22.4
 
-  packages/adapters/home-assistant: {}
+  packages/adapters/home-assistant:
+    dependencies:
+      '@https2wss/client':
+        specifier: workspace:*
+        version: link:../../client
+    devDependencies:
+      '@types/ws':
+        specifier: ^8
+        version: 8.18.1
+      ws:
+        specifier: ^8
+        version: 8.21.0
 
   packages/client:
     dependencies:
