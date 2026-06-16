@@ -1,0 +1,18 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# -----------------------------------------------------------------------------
+# run — s6 service entrypoint for https2wss.
+#
+# Waits for /data/config.yml (rendered by cont-init.d/01-config.sh) and then
+# execs the proxy.  s6-overlay replaces this process with node; on exit s6
+# will invoke the finish script and optionally restart the service.
+# -----------------------------------------------------------------------------
+set -e
+
+if [ ! -f /data/config.yml ]; then
+  bashio::log.fatal "Config file /data/config.yml not found — cont-init did not run. Aborting."
+  exit 1
+fi
+
+bashio::log.info "Starting https2wss proxy"
+exec node /opt/https2wss/dist/cli.js --config /data/config.yml

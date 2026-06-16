@@ -1,0 +1,40 @@
+---
+name: "https2wss"
+version: "0.1.0"
+slug: "https2wss"
+description: "HTTPS/SSE-to-WebSocket bridge — lets HTTPS-only clients talk to WebSocket upstreams."
+url: "https://github.com/<owner>/https2wss-addon"
+arch:
+  - amd64
+  - aarch64
+  - armv7
+startup: services
+boot: auto
+init: false
+ports:
+  "8080/tcp": 8080
+ports_description:
+  "8080/tcp": "https2wss bridge HTTP API"
+hassio_api: true
+homeassistant_api: false
+host_network: false
+apparmor: true
+options:
+  token: ""
+  upstream_profile_name: "ha-core"
+  upstream_url: "ws://homeassistant:8123/api/websocket"
+  upstream_allow_private_network: true
+  allowed_origins: []
+  log_level: "info"
+  idle_timeout_ms: 120000
+  max_frame_bytes: 1048576
+schema:
+  token: "str"
+  upstream_profile_name: "str"
+  upstream_url: "url"
+  upstream_allow_private_network: "bool"
+  allowed_origins:
+    - "str?"
+  log_level: "list(fatal|error|warn|info|debug|trace)"
+  idle_timeout_ms: "int(1000,3600000)"
+  max_frame_bytes: "int(1024,16777216)"

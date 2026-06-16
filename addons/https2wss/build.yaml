@@ -1,0 +1,16 @@
+---
+# build_from maps each target arch to its HA base image.
+# The arch-specific images live under ghcr.io/home-assistant/<arch>-base.
+# The generic "hassio-addons/base:latest" tag does not exist as of 2026.
+# The HA add-on builder substitutes the correct image for BUILD_FROM automatically.
+build_from:
+  amd64: ghcr.io/home-assistant/amd64-base:latest
+  aarch64: ghcr.io/home-assistant/aarch64-base:latest
+  armv7: ghcr.io/home-assistant/armv7-base:latest
+args:
+  BUILD_ARCH:
+labels:
+  org.opencontainers.image.title: "https2wss"
+  org.opencontainers.image.description: "HTTPS/SSE-to-WebSocket bridge for HTTPS-only clients"
+  org.opencontainers.image.source: "https://github.com/<owner>/https2wss-addon"
+  org.opencontainers.image.licenses: "MIT"

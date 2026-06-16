@@ -1,0 +1,16 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# -----------------------------------------------------------------------------
+# finish — called by s6 when the service exits (cleanly or on crash).
+#
+# Exit code 0  → s6 restarts the service.
+# Exit code 125 → s6 marks the service as down (no restart).
+#
+# We always exit 0 here so s6 will restart if the process crashes, but only
+# after a short back-off that s6 enforces between finish and the next run.
+# -----------------------------------------------------------------------------
+EXIT_CODE="${1}"
+SIGNAL="${2}"
+
+bashio::log.warning "https2wss exited (code=${EXIT_CODE}, signal=${SIGNAL}) — s6 will restart."
+exit 0

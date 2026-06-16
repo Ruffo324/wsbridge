@@ -1,0 +1,14 @@
+#include <tunables/global>
+
+profile https2wss flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  capability,
+  file,
+  signal,
+  network,
+  mount,
+  umount,
+  unix,
+}

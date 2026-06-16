@@ -1,0 +1,5 @@
+# Ensure add-on shell scripts and s6 run files always use LF in the repository
+# (required by the HA base image / Alpine bash).
+addons/**/*.sh text eol=lf
+addons/**/run  text eol=lf
+addons/**/finish text eol=lf
