@@ -4,3 +4,7 @@ export type { BridgeSessionInit, SessionLimits, SessionState } from "./BridgeSes
 export { BridgeSession } from "./BridgeSession.js";
 export type { Https2WssSocketInit } from "./Https2WssSocket.js";
 export { Https2WssSocket } from "./Https2WssSocket.js";
+export type { ResilientWebSocketInit } from "./ResilientWebSocket.js";
+export { ResilientWebSocket } from "./ResilientWebSocket.js";
+export type { CookieJar } from "./resilient/cookies.js";
+export type { Transport } from "./resilient/state.js";
