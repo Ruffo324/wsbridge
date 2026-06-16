@@ -138,6 +138,30 @@ Do not expose the bridge to the public Internet without HTTPS termination, an up
 
 See [docs/limitations.md](./docs/limitations.md) for the full list.
 
+## Home Assistant
+
+The https2wss add-on hosts the bridge inside Home Assistant OS or Supervised
+installations, giving HTTPS-only dashboards access to the HA WebSocket API.
+
+- **Add-on guide**: [docs/ha-addon.md](./docs/ha-addon.md) — install, configure, token
+  flows, NGINX reverse-proxy setup, and upgrade path.
+- **Resilient client**: [docs/fallback.md](./docs/fallback.md) — `ResilientWebSocket`
+  API, decision tree, cookie persistence, and `isAlive` override.
+
+Quick example:
+
+```ts
+import { ResilientWebSocket } from "@https2wss/client";
+
+const ws = new ResilientWebSocket("wss://homeassistant.local/api/websocket", {
+  bridge: {
+    bridgeUrl: "http://homeassistant.local:8080",
+    authToken: HA_ADDON_BRIDGE_TOKEN,
+    upstreamProfile: "ha-core",
+  },
+});
+```
+
 ## Documentation index
 
 | File | Contents |
@@ -149,6 +173,8 @@ See [docs/limitations.md](./docs/limitations.md) for the full list.
 | [docs/limitations.md](./docs/limitations.md) | Known constraints and non-goals |
 | [docs/adapter-authoring.md](./docs/adapter-authoring.md) | How to implement a new upstream adapter |
 | [docs/deployment.md](./docs/deployment.md) | Local dev, Docker, reverse proxy, env vars, observability |
+| [docs/fallback.md](./docs/fallback.md) | `ResilientWebSocket` API, decision tree, cookie persistence |
+| [docs/ha-addon.md](./docs/ha-addon.md) | Home Assistant add-on: install, config, token flows, upgrade |
 
 ## Development
 
@@ -175,6 +201,7 @@ examples/
   echo/         standalone demo + Docker Compose demo
   node-client/  minimal Node usage example
   browser-sse/  browser page served by the demo nginx container
+  ha-fallback/  interactive browser demo for ResilientWebSocket fallback paths
 ```
 
 ## License

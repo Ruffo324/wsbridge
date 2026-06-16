@@ -1,0 +1,13 @@
+{
+  "name": "@https2wss/ha-fallback-demo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "static": "tsx src/server.ts",
+    "demo": "tsx src/server.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4"
+  }
+}

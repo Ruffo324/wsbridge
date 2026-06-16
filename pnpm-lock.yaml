@@ -48,6 +48,12 @@ importers:
         specifier: ^8
         version: 8.21.0
 
+  examples/ha-fallback:
+    devDependencies:
+      tsx:
+        specifier: ^4
+        version: 4.22.4
+
   examples/node-client:
     dependencies:
       '@https2wss/client':
