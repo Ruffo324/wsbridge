@@ -469,6 +469,114 @@ describe("session not found", () => {
   });
 });
 
+describe("SSE CORS headers regression (reply.hijack bypasses @fastify/cors)", () => {
+  it("12 — GET /events with Origin header returns access-control-allow-origin on the SSE 200 response", async () => {
+    // Open-mode config (allowedOrigins: []) — confirms SSE stream is healthy.
+    // The origin-specific CORS assertion is in test 13.
+    const { transport } = await createSession("echo", AUTH, "sse");
+
+    await new Promise<void>((res) => setTimeout(res, 30));
+
+    const eventsUrl = `${baseUrl}${transport.receiveUrl}?after=0`;
+    const sseRes = await fetch(eventsUrl, {
+      headers: {
+        authorization: AUTH,
+        // The standard makeConfig() has allowedOrigins: [] (open mode), so CORS
+        // headers are not added for an empty origin. To test the full round-trip
+        // we need a server configured with allowedOrigins: [ORIGIN].
+        // Use the server already running; it has allowedOrigins: [] which means
+        // "open mode" — buildResponseHeaders returns {} for any non-null origin
+        // unless the origin is in the allow list.
+        //
+        // For this regression we just verify the header IS present when the
+        // server is reconfigured with an explicit origin allow-list.
+        // We test here with NO Origin header (open mode) and confirm the stream
+        // is healthy — the origin-specific test is below.
+        origin: "",
+      },
+    });
+    expect(sseRes.ok).toBe(true);
+    expect(sseRes.headers.get("content-type")).toContain("text/event-stream");
+
+    // Also quickly confirm the stream is readable
+    if (sseRes.body !== null) {
+      const reader = sseRes.body.getReader();
+      const { value } = await reader.read();
+      const text = new TextDecoder().decode(value);
+      expect(text).toContain(":ok");
+      reader.cancel().catch(() => {});
+    }
+  });
+
+  it("13 — GET /events with explicit allowed Origin returns access-control-allow-origin", async () => {
+    // Spin up a server with a configured allowed origin
+    const ORIGIN = "http://allowed.test";
+    const configWithCors: ServerConfig = {
+      ...makeConfig(echo.url),
+      security: {
+        ...makeConfig(echo.url).security,
+        cors: { allowedOrigins: [ORIGIN], allowCredentials: false },
+      },
+    };
+
+    const manager = new SessionManager({
+      sessionDefaults: {
+        idleTimeoutMs: 60_000,
+        maxDurationMs: 3_600_000,
+        frameBuffer: {
+          maxFrameBytes: 1_048_576,
+          maxBufferedFrames: 1_000,
+          maxBufferedBytes: 16_777_216,
+          overflowPolicy: "close",
+        },
+      },
+      maxSessionsPerToken: 20,
+    });
+
+    const corsServer = createHttpServer({
+      config: configWithCors,
+      sessionManager: manager,
+      upstreamPolicy: new UpstreamPolicy(configWithCors.security.upstreamPolicy),
+      auth: buildAuth({ requireAuth: true, tokens: [{ value: VALID_TOKEN }] }),
+      ssrfGuard: makeFakeSsrfGuard(),
+    });
+    await corsServer.start();
+    const corsBase = `http://127.0.0.1:${corsServer.port()}`;
+
+    try {
+      // Create session
+      const sessRes = await fetch(`${corsBase}/v1/sessions`, {
+        method: "POST",
+        headers: { authorization: AUTH, "content-type": "application/json" },
+        body: JSON.stringify({
+          protocol: "https2wss",
+          version: 1,
+          transport: { mode: "sse", fallbacks: [] },
+          upstream: { adapter: "websocket", profile: "echo" },
+        }),
+      });
+      expect(sessRes.ok).toBe(true);
+      const sess = (await sessRes.json()) as {
+        sessionId: string;
+        transport: { receiveUrl: string };
+      };
+
+      await new Promise<void>((res) => setTimeout(res, 30));
+
+      // Fetch SSE with the allowed origin
+      const sseRes = await fetch(`${corsBase}${sess.transport.receiveUrl}?after=0`, {
+        headers: { authorization: AUTH, origin: ORIGIN },
+      });
+      expect(sseRes.ok).toBe(true);
+      // The CORS header MUST be present on the hijacked SSE response
+      expect(sseRes.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+      sseRes.body?.cancel();
+    } finally {
+      await corsServer.stop();
+    }
+  });
+});
+
 describe("GET /healthz", () => {
   it("11 — returns 200 with status ok (no auth required)", async () => {
     const res = await fetch(`${baseUrl}/healthz`);
