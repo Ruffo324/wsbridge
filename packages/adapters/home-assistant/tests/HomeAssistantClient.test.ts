@@ -518,3 +518,188 @@ describe("HomeAssistantError", () => {
     expect(err.details).toEqual({ ha_code: "not_found" });
   });
 });
+
+// ── Re-auth tests ─────────────────────────────────────────────────────────
+
+describe("HomeAssistantClient — re-auth on transport flip", () => {
+  let socket: FakeSocket;
+  let client: HomeAssistantClient;
+
+  beforeEach(async () => {
+    socket = new FakeSocket();
+    client = makeClient(socket);
+    await doAuth(socket, client, "2024.1.0");
+  });
+
+  afterEach(() => {
+    client.close();
+  });
+
+  it("after auth_ok, a second auth_required triggers re-auth and dispatches 'reauth' event", async () => {
+    const reauthEvents: Array<{ haVersion: string }> = [];
+    client.addEventListener("reauth", (ev) => {
+      reauthEvents.push((ev as CustomEvent<{ haVersion: string }>).detail);
+    });
+
+    // Simulate transport flip: HA sends auth_required again
+    socket.emitMessage({ type: "auth_required", ha_version: "2024.6.0" });
+
+    // Client should immediately send auth
+    const authMsg = socket.lastSent() as Record<string, unknown>;
+    expect(authMsg["type"]).toBe("auth");
+    expect(authMsg["access_token"]).toBe("test-token");
+
+    // HA responds with auth_ok (new version)
+    socket.emitMessage({ type: "auth_ok", ha_version: "2024.6.0" });
+
+    // Allow the async re-auth flow to complete
+    await new Promise<void>((res) => setTimeout(res, 10));
+
+    expect(reauthEvents).toHaveLength(1);
+    expect(reauthEvents[0]?.haVersion).toBe("2024.6.0");
+    expect(client.authenticated).toBe(true);
+    expect(client.haVersion).toBe("2024.6.0");
+  });
+
+  it("after re-auth, active subscription ids are replaced with fresh ids", async () => {
+    // Subscribe first
+    const handler = vi.fn();
+    const subP = client.subscribeEvents(handler);
+    const subMsg1 = socket.lastSent() as Record<string, unknown>;
+    const oldSubId = subMsg1["id"] as number;
+    socket.emitMessage({ type: "result", id: oldSubId, success: true, result: null });
+    await subP;
+
+    const sentLengthBeforeReauth = socket.sent.length;
+
+    // Simulate transport flip
+    socket.emitMessage({ type: "auth_required", ha_version: "2024.6.0" });
+
+    // Consume auth message
+    const authMsg = socket.lastSent() as Record<string, unknown>;
+    expect(authMsg["type"]).toBe("auth");
+
+    // HA acks auth
+    socket.emitMessage({ type: "auth_ok", ha_version: "2024.6.0" });
+
+    // Client now re-subscribes — wait for the subscribe_events to be sent
+    await new Promise<void>((res) => setTimeout(res, 10));
+
+    // A new subscribe_events should have been sent after re-auth
+    const newSubscribeMsg = socket.sent
+      .slice(sentLengthBeforeReauth)
+      .map((s) => JSON.parse(s) as Record<string, unknown>)
+      .find((m) => m["type"] === "subscribe_events");
+
+    expect(newSubscribeMsg).toBeDefined();
+    const newSubId = newSubscribeMsg!["id"] as number;
+    expect(newSubId).not.toBe(oldSubId);
+
+    // Server confirms the new subscription
+    socket.emitMessage({ type: "result", id: newSubId, success: true, result: null });
+    await new Promise<void>((res) => setTimeout(res, 10));
+
+    // Handler still fires when event arrives on the new subscription id
+    socket.emitMessage({
+      type: "event",
+      id: newSubId,
+      event: {
+        event_type: "state_changed",
+        data: { entity_id: "light.kitchen" },
+        origin: "LOCAL",
+        time_fired: "2026-06-16T00:00:00+00:00",
+        context: {},
+      },
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect((handler.mock.calls[0]?.[0] as { data: { entity_id: string } }).data.entity_id).toBe(
+      "light.kitchen",
+    );
+  });
+
+  it("re-auth with same token gets auth_invalid → 'reauth-failed' event + pending requests rejected", async () => {
+    const failedEvents: Array<{ message: string }> = [];
+    client.addEventListener("reauth-failed", (ev) => {
+      failedEvents.push((ev as CustomEvent<{ message: string }>).detail);
+    });
+
+    // Queue a pending request before the re-auth so we can verify it gets rejected.
+    // IMPORTANT: attach a catch handler immediately to prevent an unhandled rejection
+    // when rejectAllPending fires during the async re-auth flow.
+    const pendingGetStates = client.getStates();
+    // Pre-attach catch so the rejection is always "handled" even before we await below
+    const pendingGetStatesCaught = pendingGetStates.catch((err: unknown) => err);
+
+    // Simulate transport flip
+    socket.emitMessage({ type: "auth_required", ha_version: "2024.6.0" });
+    // Consume auth message
+    expect((socket.lastSent() as Record<string, unknown>)["type"]).toBe("auth");
+
+    // HA rejects the token
+    socket.emitMessage({ type: "auth_invalid", message: "Token revoked" });
+
+    await new Promise<void>((res) => setTimeout(res, 10));
+
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0]?.message).toBe("Token revoked");
+
+    // Pending request should have been rejected with SOCKET_CLOSED
+    const err = await pendingGetStatesCaught;
+    expect(err).toMatchObject({ code: "SOCKET_CLOSED" });
+  });
+
+  it("manual reauthenticate() triggers the same flow as an automatic re-auth", async () => {
+    const reauthEvents: Array<{ haVersion: string }> = [];
+    client.addEventListener("reauth", (ev) => {
+      reauthEvents.push((ev as CustomEvent<{ haVersion: string }>).detail);
+    });
+
+    // Caller triggers re-auth explicitly (e.g. after token rotation)
+    const reAuthP = client.reauthenticate();
+
+    // Client should send auth immediately
+    const authMsg = socket.lastSent() as Record<string, unknown>;
+    expect(authMsg["type"]).toBe("auth");
+    expect(authMsg["access_token"]).toBe("test-token");
+
+    // HA responds with auth_ok
+    socket.emitMessage({ type: "auth_ok", ha_version: "2024.9.0" });
+
+    await reAuthP;
+
+    expect(reauthEvents).toHaveLength(1);
+    expect(reauthEvents[0]?.haVersion).toBe("2024.9.0");
+    expect(client.authenticated).toBe(true);
+  });
+
+  it("reauthenticate() while not yet authenticated rejects with NOT_AUTHENTICATED", async () => {
+    const freshSocket = new FakeSocket();
+    const freshClient = makeClient(freshSocket);
+
+    await expect(freshClient.reauthenticate()).rejects.toMatchObject({
+      code: "NOT_AUTHENTICATED",
+    });
+    freshClient.close();
+  });
+
+  it("auth_required during an in-progress re-auth is ignored (no double re-auth)", async () => {
+    const reauthEvents: Array<unknown> = [];
+    client.addEventListener("reauth", () => reauthEvents.push(1));
+
+    // Trigger re-auth
+    socket.emitMessage({ type: "auth_required", ha_version: "2024.6.0" });
+    // Auth message sent
+    expect((socket.lastSent() as Record<string, unknown>)["type"]).toBe("auth");
+
+    // Simulate another auth_required arriving before we get auth_ok
+    socket.emitMessage({ type: "auth_required", ha_version: "2024.6.0" });
+
+    // Now resolve
+    socket.emitMessage({ type: "auth_ok", ha_version: "2024.6.0" });
+    await new Promise<void>((res) => setTimeout(res, 10));
+
+    // Only one reauth event, not two
+    expect(reauthEvents).toHaveLength(1);
+  });
+});

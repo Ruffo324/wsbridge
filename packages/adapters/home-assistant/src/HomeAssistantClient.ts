@@ -22,6 +22,15 @@
  *   dispatched on the underlying socket reference — callers can observe
  *   this as the client going silent.
  *
+ * Re-authentication on transport flip:
+ *   When the underlying transport (e.g. ResilientWebSocket) switches from
+ *   native to bridge mid-session, the upstream HA WebSocket sees a brand-new
+ *   connection and re-sends {type:"auth_required"}. HomeAssistantClient
+ *   detects this (wasAuthenticated flag), automatically re-authenticates,
+ *   and re-subscribes all active subscriptions with fresh IDs. Events that
+ *   fired during the gap are not delivered (at-most-once after reconnect).
+ *   A "reauth" CustomEvent is dispatched on success; "reauth-failed" on failure.
+ *
  * Unknown inbound message types:
  *   Logged via console.debug and ignored. The client never crashes on
  *   future HA protocol additions.
@@ -29,11 +38,6 @@
  * TODO(future): subscribeTrigger — HA supports trigger-based subscriptions
  *   (type:"subscribe_trigger") which differ from subscribe_events. Tracked
  *   as a future enhancement.
- *
- * TODO(future): reconnect helper — if the transport is a ResilientWebSocket
- *   HA may re-send auth_required after reconnect. Consider a reconnectAuth()
- *   method or a "auth_required" event that callers can listen to for
- *   re-authentication on transport-level reconnects.
  */
 
 import {
@@ -61,9 +65,17 @@ interface PendingRequest {
   timeoutHandle: ReturnType<typeof setTimeout>;
 }
 
+// ── Internal subscription record ──────────────────────────────────────────
+
+interface SubscriptionRecord {
+  handler: (ev: HaEvent) => void;
+  /** The original subscribe_events request payload (minus the id, which changes on re-subscribe). */
+  request: { type: "subscribe_events"; event_type?: string };
+}
+
 // ── HomeAssistantClient ───────────────────────────────────────────────────
 
-export class HomeAssistantClient {
+export class HomeAssistantClient extends EventTarget {
   // ── Config ──────────────────────────────────────────────────────────────
   private readonly socket: HomeAssistantSocketLike;
   private readonly accessToken: string;
@@ -80,17 +92,31 @@ export class HomeAssistantClient {
   private authPromise: Promise<{ ha_version: string }> | null = null;
 
   /**
+   * Set to true once the first auth_ok is received.
+   * Used to distinguish the initial auth flow from a re-auth triggered by a
+   * transport flip (where HA sends auth_required again mid-session).
+   */
+  private wasAuthenticated = false;
+
+  /**
    * Buffer for the first auth_required message, in case it arrives before
    * authenticate() is called (e.g. when the socket is already open at construction).
    * Only ever stores the most recent auth_required until authenticate() reads it.
    */
   private bufferedAuthRequired: { ha_version: string } | null = null;
 
+  /**
+   * True while an automatic re-auth handshake (triggered by a transport flip) is
+   * in progress. Prevents double re-auth if auth_required arrives again during the
+   * re-auth itself.
+   */
+  private reauthing = false;
+
   // ── Pending result-based requests (id → PendingRequest) ─────────────────
   private readonly pending = new Map<number, PendingRequest>();
 
-  // ── Active event subscriptions (subscriptionId → handler) ───────────────
-  private readonly subscriptions = new Map<number, (ev: HaEvent) => void>();
+  // ── Active event subscriptions (subscriptionId → record) ─────────────────
+  private readonly subscriptions = new Map<number, SubscriptionRecord>();
 
   // ── Ping state ──────────────────────────────────────────────────────────
   private pingIntervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -110,6 +136,7 @@ export class HomeAssistantClient {
   private readonly closeListener: (ev: Event) => void;
 
   constructor(opts: HomeAssistantClientOptions) {
+    super();
     this.socket = opts.socket;
     this.accessToken = opts.accessToken;
     this.requestTimeoutMs = opts.requestTimeoutMs ?? 15_000;
@@ -196,6 +223,7 @@ export class HomeAssistantClient {
           reject(result);
         } else {
           this._authenticated = true;
+          this.wasAuthenticated = true;
           this._haVersion = result.ha_version;
           // Start ping interval after successful auth
           if (this.pingIntervalMs > 0) {
@@ -269,6 +297,157 @@ export class HomeAssistantClient {
     });
   }
 
+  // ── reauthenticate() — public manual re-auth ─────────────────────────────
+
+  /**
+   * Manually trigger re-authentication. Use this when the long-lived access
+   * token has been rotated and the caller holds the new token. The method
+   * performs the same auth handshake as the initial authenticate() and then
+   * re-establishes all active subscriptions.
+   *
+   * Resolves on auth_ok; rejects with NOT_AUTHENTICATED if called before the
+   * initial auth, or AUTH_INVALID if HA rejects the token.
+   */
+  async reauthenticate(): Promise<void> {
+    if (this.closed) {
+      throw new HomeAssistantError("SOCKET_CLOSED", "Socket is closed");
+    }
+    if (!this.wasAuthenticated) {
+      throw new HomeAssistantError(
+        "NOT_AUTHENTICATED",
+        "Cannot reauthenticate before initial authenticate() has succeeded",
+      );
+    }
+    await this.runReAuth();
+  }
+
+  /**
+   * Shared re-auth implementation, called either from reauthenticate() (caller-
+   * initiated) or from handleMessage() when HA sends auth_required after the
+   * initial auth_ok (transport-flip scenario).
+   *
+   * Sends auth, waits for auth_ok or auth_invalid. On success, re-establishes
+   * all active subscriptions.
+   */
+  private async runReAuth(): Promise<void> {
+    if (this.reauthing) return; // already in progress
+    this.reauthing = true;
+    this._authenticated = false;
+    this.stopPingInterval();
+
+    try {
+      const haVersion = await this.runReAuthHandshake();
+      this._authenticated = true;
+      this._haVersion = haVersion;
+      if (this.pingIntervalMs > 0) {
+        this.startPingInterval();
+      }
+      // Re-establish subscriptions with fresh IDs.
+      // Events that fired during the gap are not delivered (at-most-once semantics).
+      await this.reEstablishSubscriptions();
+      this.dispatchEvent(new CustomEvent("reauth", { detail: { haVersion } }));
+    } catch (err) {
+      // err is HomeAssistantError from the handshake
+      const haErr =
+        err instanceof HomeAssistantError
+          ? err
+          : new HomeAssistantError("AUTH_INVALID", "Re-authentication failed");
+      this.dispatchEvent(new CustomEvent("reauth-failed", { detail: { message: haErr.message } }));
+      // Reject all in-flight requests that can no longer be served
+      this.rejectAllPending("SOCKET_CLOSED", "Re-authentication failed; closing");
+      try {
+        this.socket.close();
+      } catch {
+        // best-effort
+      }
+      // Propagate so that reauthenticate() callers know it failed
+      throw haErr;
+    } finally {
+      this.reauthing = false;
+    }
+  }
+
+  /**
+   * Low-level handshake for re-auth: send auth immediately (HA already sent
+   * auth_required), wait for auth_ok or auth_invalid.
+   * Resolves with the new ha_version string.
+   */
+  private runReAuthHandshake(): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      let done = false;
+
+      const finish = (result: string | HomeAssistantError) => {
+        if (done) return;
+        done = true;
+        this.socket.removeEventListener("message", msgListener);
+        this.socket.removeEventListener("close", closeListener);
+        if (result instanceof HomeAssistantError) {
+          reject(result);
+        } else {
+          resolve(result);
+        }
+      };
+
+      const msgListener = (ev: Event) => {
+        const msgEv = ev as MessageEvent;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(msgEv.data as string) as unknown;
+        } catch {
+          // Malformed JSON — ignore; wait for a valid message
+          return;
+        }
+        if (isAuthOk(parsed)) {
+          finish(parsed.ha_version);
+        } else if (isAuthInvalid(parsed)) {
+          finish(
+            new HomeAssistantError("AUTH_INVALID", parsed.message, { message: parsed.message }),
+          );
+        }
+        // Other messages (events, results) may still arrive during re-auth;
+        // they are handled by the main handleMessage listener in parallel.
+      };
+
+      const closeListener = () => {
+        finish(new HomeAssistantError("AUTH_TIMEOUT", "Socket closed during re-authentication"));
+      };
+
+      this.socket.addEventListener("message", msgListener);
+      this.socket.addEventListener("close", closeListener);
+
+      // Send auth immediately — HA already sent auth_required, so it's waiting.
+      this.socket.send(JSON.stringify({ type: "auth", access_token: this.accessToken }));
+    });
+  }
+
+  /**
+   * After a successful re-auth, loop through all active subscriptions,
+   * send fresh subscribe_events requests with new IDs, and update the map.
+   * The old IDs are dead from HA's perspective (they belonged to the prior
+   * connection). Handlers are preserved; only the subscription IDs change.
+   */
+  private async reEstablishSubscriptions(): Promise<void> {
+    // Snapshot the current entries so we can safely mutate the map.
+    const entries = [...this.subscriptions.entries()];
+    this.subscriptions.clear();
+
+    for (const [, record] of entries) {
+      const newId = this.nextId++;
+      const msg: Record<string, unknown> = { id: newId, type: "subscribe_events" };
+      if (record.request.event_type !== undefined) {
+        msg["event_type"] = record.request.event_type;
+      }
+      try {
+        await this.sendAndWait(newId, msg);
+        // Re-register with the new ID
+        this.subscriptions.set(newId, record);
+      } catch {
+        // If one subscription fails to re-establish, continue with the rest.
+        console.debug("[HomeAssistantClient] Failed to re-establish subscription after re-auth");
+      }
+    }
+  }
+
   // ── subscribeEvents() ────────────────────────────────────────────────────
 
   /**
@@ -283,15 +462,18 @@ export class HomeAssistantClient {
     this.requireAuthenticated();
 
     const id = this.nextId++;
-    const msg: Record<string, unknown> = { id, type: "subscribe_events" };
+    const request: { type: "subscribe_events"; event_type?: string } = {
+      type: "subscribe_events",
+    };
     if (eventType !== undefined) {
-      msg["event_type"] = eventType;
+      request.event_type = eventType;
     }
+    const msg: Record<string, unknown> = { id, ...request };
 
     await this.sendAndWait(id, msg);
 
-    // Subscription confirmed — register the handler
-    this.subscriptions.set(id, handler);
+    // Subscription confirmed — register handler + original request payload
+    this.subscriptions.set(id, { handler, request });
 
     const self = this;
     return {
@@ -449,16 +631,21 @@ export class HomeAssistantClient {
     } else if (isPong(parsed)) {
       this.handlePong(parsed);
     } else if (isAuthRequired(parsed)) {
-      if (!this._authenticated) {
+      if (!this.wasAuthenticated) {
         // Buffer auth_required so authenticate() can replay it even if it was
         // received before authenticate() was called (e.g. socket already open).
         this.bufferedAuthRequired = { ha_version: parsed.ha_version };
-      } else {
-        // After auth, auth_required means HA restarted. Log + ignore.
-        // TODO(future): Emit an event so callers can re-authenticate on HA restart.
+      } else if (!this.reauthing) {
+        // auth_required after a successful auth means HA restarted or the transport
+        // flipped to a fresh connection. Trigger automatic re-authentication.
         console.debug(
-          "[HomeAssistantClient] Received auth_required after authentication (HA restart?)",
+          "[HomeAssistantClient] Received auth_required after authentication (transport flip / HA restart) — re-authenticating",
         );
+        // runReAuth is async; fire-and-forget — errors are handled internally
+        // (reauth-failed event dispatched, pending requests rejected).
+        this.runReAuth().catch(() => {
+          // Error is already handled inside runReAuth (event dispatched, socket closed).
+        });
       }
     } else if (isAuthOk(parsed) || isAuthInvalid(parsed)) {
       // These are driven by the auth-listener during the handshake.
@@ -514,11 +701,11 @@ export class HomeAssistantClient {
       context: Record<string, unknown>;
     };
   }): void {
-    const handler = this.subscriptions.get(msg.id);
-    if (handler === undefined) {
+    const record = this.subscriptions.get(msg.id);
+    if (record === undefined) {
       return; // Subscription already removed
     }
-    handler({
+    record.handler({
       event_type: msg.event.event_type,
       data: msg.event.data,
       origin: msg.event.origin,

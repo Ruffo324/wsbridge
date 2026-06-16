@@ -163,6 +163,18 @@ const ws = new ResilientWebSocket(target, {
 When `isAlive` returns `false`, the watchdog closes the native socket (code 1006) and
 triggers fallback with reason `heartbeat-timeout`.
 
+## Re-authentication after a transport flip
+
+When the transport flips during an authenticated Home Assistant session (e.g. the
+native WebSocket fails mid-session and the bridge takes over), HA sees a brand-new
+connection and re-sends `{type:"auth_required"}`. `HomeAssistantClient` detects this
+(via a `wasAuthenticated` flag), automatically re-authenticates using the stored
+long-lived access token, and re-establishes all active event subscriptions with fresh
+subscription IDs. Events that fire during the gap are not delivered (at-most-once after
+reconnect). A `"reauth"` `CustomEvent` is dispatched on success; `"reauth-failed"` if
+the token is rejected. Callers can also trigger re-auth manually via
+`client.reauthenticate()` (e.g. after token rotation).
+
 ## Limitations
 
 - **No automatic native re-evaluation while online.** Once on bridge, the instance stays

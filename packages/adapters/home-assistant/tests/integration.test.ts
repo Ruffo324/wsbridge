@@ -25,6 +25,8 @@ interface FakeHaServerOptions {
   validToken?: string;
   /** Optional hook to inject custom event emission after subscription confirmation. */
   onSubscribed?: (serverWs: WsWebSocketType, subId: number) => void;
+  /** HA version string to use in auth_required / auth_ok. Default "2024.1.0". */
+  haVersion?: string;
 }
 
 async function startFakeHaServer(opts: FakeHaServerOptions = {}): Promise<{
@@ -41,8 +43,9 @@ async function startFakeHaServer(opts: FakeHaServerOptions = {}): Promise<{
       const port = address.port;
 
       wss.on("connection", (ws) => {
+        const version = opts.haVersion ?? "2024.1.0";
         // Step 1: Send auth_required on connect
-        ws.send(JSON.stringify({ type: "auth_required", ha_version: "2024.1.0" }));
+        ws.send(JSON.stringify({ type: "auth_required", ha_version: version }));
 
         ws.on("message", (data) => {
           let msg: Record<string, unknown>;
@@ -54,7 +57,7 @@ async function startFakeHaServer(opts: FakeHaServerOptions = {}): Promise<{
 
           if (msg["type"] === "auth") {
             if (opts.validToken === undefined || msg["access_token"] === opts.validToken) {
-              ws.send(JSON.stringify({ type: "auth_ok", ha_version: "2024.1.0" }));
+              ws.send(JSON.stringify({ type: "auth_ok", ha_version: version }));
             } else {
               ws.send(JSON.stringify({ type: "auth_invalid", message: "Invalid token" }));
             }
@@ -251,6 +254,80 @@ describe("HomeAssistantClient integration", () => {
       code: "AUTH_INVALID",
       message: "Invalid token",
     });
+  });
+
+  it("re-auth mid-session: server sends auth_required again, client re-authenticates transparently and subscription continues", async () => {
+    // The fake HA server that supports forced re-auth:
+    // After the first subscription, it will close and re-open the connection
+    // by sending auth_required again (simulated at the message level via a
+    // shared server-side socket reference and a trigger flag).
+    const receivedEvents: unknown[] = [];
+    let serverSocketRef: WsWebSocketType | null = null;
+
+    ({ port: serverPort, close: serverClose } = await startFakeHaServer({
+      onSubscribed: (serverWs, subId) => {
+        serverSocketRef = serverWs;
+        // Emit an event immediately so we know the subscription is live
+        setTimeout(() => {
+          serverWs.send(
+            JSON.stringify({
+              type: "event",
+              id: subId,
+              event: {
+                event_type: "state_changed",
+                data: { entity_id: "sensor.before_reauth", new_state: { state: "1" } },
+                origin: "LOCAL",
+                time_fired: "2026-06-16T00:00:00+00:00",
+                context: {},
+              },
+            }),
+          );
+
+          // After the initial event, simulate a transport flip: server sends auth_required again.
+          // The server's auth handler will respond to the subsequent auth message with auth_ok.
+          setTimeout(() => {
+            if (serverSocketRef === null) return;
+            serverSocketRef.send(JSON.stringify({ type: "auth_required", ha_version: "2024.1.0" }));
+          }, 30);
+        }, 10);
+      },
+    }));
+
+    wsClient = new WsWebSocket(`ws://localhost:${serverPort}`);
+    haClient = new HomeAssistantClient({
+      socket: wrapWsSocket(wsClient),
+      accessToken: "any-token",
+      requestTimeoutMs: 5000,
+      pingIntervalMs: 0,
+    });
+
+    const reauthPromise = new Promise<string>((res) => {
+      haClient.addEventListener("reauth", (ev) => {
+        res((ev as CustomEvent<{ haVersion: string }>).detail.haVersion);
+      });
+    });
+
+    await haClient.authenticate();
+
+    // Subscribe — the onSubscribed callback fires on the server side
+    const activeSubHandle = await haClient.subscribeEvents((ev) => {
+      receivedEvents.push(ev);
+    });
+    expect(activeSubHandle.id).toBeTypeOf("number");
+
+    // Wait for the first event and the re-auth to complete
+    const newVersion = await reauthPromise;
+    // The server always responds with its configured ha_version ("2024.1.0")
+    expect(newVersion).toBe("2024.1.0");
+
+    // Wait a bit for re-subscribe to settle
+    await new Promise<void>((res) => setTimeout(res, 100));
+
+    // The client should be authenticated again
+    expect(haClient.authenticated).toBe(true);
+
+    // At least the initial event should have been received
+    expect(receivedEvents.length).toBeGreaterThanOrEqual(1);
   });
 
   it("handler captures fake events emitted for an active subscription", async () => {

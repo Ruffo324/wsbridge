@@ -90,6 +90,22 @@ URL.  See the https2wss protocol documentation for the full API reference.
 - **Rotate tokens periodically**: Update the `token` field and restart the add-on.
   Existing sessions will be closed.
 
+## Connection resilience
+
+The bridge client included in this repository (`ResilientWebSocket` in the
+`@https2wss/client` package) automatically selects the best transport — native
+WebSocket first, then falling back to the SSE/long-poll bridge if native fails or
+goes silent. See [docs/fallback.md](https://github.com/REPLACE_ME/https2wss/blob/master/docs/fallback.md)
+for the full decision tree, cookie persistence model, and `isAlive` override API.
+
+When a transport flip occurs during an authenticated Home Assistant session, the
+`HomeAssistantClient` adapter (in `@https2wss/adapters/home-assistant`) automatically
+re-authenticates with the stored long-lived access token and re-establishes all active
+event subscriptions. Events that fire during the brief gap are not delivered
+(at-most-once semantics after reconnect). The caller receives a `"reauth"` CustomEvent
+on the `HomeAssistantClient` instance when re-authentication succeeds, or a
+`"reauth-failed"` event if the token was rejected.
+
 ## Troubleshooting
 
 - **Add-on fails to start**: Check the log tab.  The most common cause is a malformed

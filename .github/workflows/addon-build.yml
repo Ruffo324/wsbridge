@@ -1,0 +1,72 @@
+# This workflow is config-ready but requires the user to push to a GitHub repo + enable Actions
+# + ensure the GHCR package visibility is set to public (or internal) after the first push.
+#
+# Steps before enabling:
+#   1. Push this repo to GitHub (replace REPLACE_ME placeholders first).
+#   2. Go to Settings → Actions → General → enable "Read and write permissions".
+#   3. After the first successful run, set the GHCR package visibility under
+#      your GitHub profile → Packages.
+#
+# TODO: If a newer home-assistant/builder tag is released after 2025.03.0,
+#       update the `uses: home-assistant/builder@<tag>` line below.
+
+name: Build add-on
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "addons/https2wss/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "Dockerfile"
+      - ".github/workflows/addon-build.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Override version tag (else uses addons/https2wss/config.yaml version)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write     # push images to GHCR
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, aarch64, armv7]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read add-on version
+        id: meta
+        shell: bash
+        run: |
+          VERSION=$(grep '^version:' addons/https2wss/config.yaml | awk '{print $2}' | tr -d '"')
+          EFFECTIVE="${{ inputs.version }}"
+          if [ -z "$EFFECTIVE" ]; then
+            EFFECTIVE="$VERSION"
+          fi
+          echo "version=$EFFECTIVE" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build add-on image
+        uses: home-assistant/builder@2025.03.0
+        with:
+          args: |
+            --${{ matrix.arch }}
+            --target /github/workspace/addons/https2wss
+            --image "${{ github.repository_owner }}/{arch}-https2wss"
+            --docker-hub ghcr.io
+            --addon
