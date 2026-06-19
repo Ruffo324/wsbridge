@@ -4,6 +4,9 @@ version: "0.1.0"
 slug: "https2wss"
 description: "HTTPS/SSE-to-WebSocket bridge — lets HTTPS-only clients talk to WebSocket upstreams."
 url: "https://github.com/Ruffo324/wsbridge"
+# Pre-built image location; Supervisor substitutes {arch}.
+# Pushed by .github/workflows/addon-build.yml.
+image: "ghcr.io/ruffo324/{arch}-https2wss"
 arch:
   - amd64
   - aarch64
