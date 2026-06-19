@@ -14,9 +14,8 @@ networking.
 2. Click the menu (three dots, top right) → **Repositories**.
 3. Add the community repository URL:
    ```
-   https://github.com/REPLACE_ME/https2wss
+   https://github.com/Ruffo324/wsbridge
    ```
-   (Replace `REPLACE_ME` with your GitHub user or org name.)
 4. Find **https2wss** in the store and click **Install**.
 
 ## Configuration
@@ -94,7 +93,7 @@ URL.  See the https2wss protocol documentation for the full API reference.
 The bridge client included in this repository (`ResilientWebSocket` in the
 `@https2wss/client` package) automatically selects the best transport — native
 WebSocket first, then falling back to the SSE/long-poll bridge if native fails or
-goes silent. See [docs/fallback.md](https://github.com/REPLACE_ME/https2wss/blob/master/docs/fallback.md)
+goes silent. See [docs/fallback.md](https://github.com/Ruffo324/wsbridge/blob/master/docs/fallback.md)
 for the full decision tree, cookie persistence model, and `isAlive` override API.
 
 When a transport flip occurs during an authenticated Home Assistant session, the

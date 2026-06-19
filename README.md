@@ -140,23 +140,17 @@ See [docs/limitations.md](./docs/limitations.md) for the full list.
 
 ## Installing the Home Assistant Add-on
 
-To install the https2wss add-on from the HA community store:
+1. In Home Assistant, go to **Settings → Add-ons → Add-on Store → ⋮ → Repositories**.
+2. Add this repository URL:
+   ```
+   https://github.com/Ruffo324/wsbridge
+   ```
+3. Find **https2wss** in the store and click **Install**.
 
-1. Replace every `REPLACE_ME` placeholder in:
-   - `repository.json` (the repo URL and maintainer name)
-   - `addons/https2wss/config.yaml` (the `url` field)
-   - `addons/https2wss/build.yaml` (the `source` label)
-   - `addons/https2wss/DOCS.md` (the installation URL)
-2. Push the repository to GitHub.
-3. In Home Assistant, go to **Settings → Add-ons → Add-on Store → ⋮ → Repositories**
-   and add your repository URL.
-4. Find **https2wss** in the store and click **Install**.
-
-The workflow in `.github/workflows/addon-build.yml` (using
-`home-assistant/builder@2025.03.0`) will build multi-arch images for `amd64`,
-`aarch64`, and `armv7` and push them to GHCR on every push to `master` that touches
-the add-on or package source. Enable GitHub Actions and set the GHCR package visibility
-after the first push.
+The workflow at [.github/workflows/addon-build.yml](.github/workflows/addon-build.yml)
+(using `home-assistant/builder@2025.03.0`) builds multi-arch images for `amd64`,
+`aarch64`, and `armv7` and publishes them to GHCR on every push to `master` that
+touches the add-on or package source.
 
 ## Home Assistant
 

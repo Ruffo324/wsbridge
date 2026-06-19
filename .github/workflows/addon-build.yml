@@ -1,10 +1,10 @@
-# This workflow is config-ready but requires the user to push to a GitHub repo + enable Actions
-# + ensure the GHCR package visibility is set to public (or internal) after the first push.
+# Builds the HA add-on image for amd64 / aarch64 / armv7 and pushes to GHCR.
 #
-# Steps before enabling:
-#   1. Push this repo to GitHub (replace REPLACE_ME placeholders first).
-#   2. Go to Settings → Actions → General → enable "Read and write permissions".
-#   3. After the first successful run, set the GHCR package visibility under
+# Repo: https://github.com/Ruffo324/wsbridge
+#
+# One-time setup after the first push:
+#   1. Settings → Actions → General → enable "Read and write permissions".
+#   2. After the first successful run, set the GHCR package visibility under
 #      your GitHub profile → Packages.
 #
 # TODO: If a newer home-assistant/builder tag is released after 2025.03.0,

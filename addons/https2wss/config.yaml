@@ -3,7 +3,7 @@ name: "https2wss"
 version: "0.1.0"
 slug: "https2wss"
 description: "HTTPS/SSE-to-WebSocket bridge — lets HTTPS-only clients talk to WebSocket upstreams."
-url: "https://github.com/REPLACE_ME/https2wss"
+url: "https://github.com/Ruffo324/wsbridge"
 arch:
   - amd64
   - aarch64
