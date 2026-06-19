@@ -6,9 +6,6 @@
 #   1. Settings → Actions → General → enable "Read and write permissions".
 #   2. After the first successful run, set the GHCR package visibility under
 #      your GitHub profile → Packages.
-#
-# TODO: If a newer home-assistant/builder tag is released after 2025.03.0,
-#       update the `uses: home-assistant/builder@<tag>` line below.
 
 name: Build add-on
 
@@ -52,7 +49,10 @@ jobs:
           if [ -z "$EFFECTIVE" ]; then
             EFFECTIVE="$VERSION"
           fi
+          # Normalize repo owner to lowercase — GHCR requires lowercase namespaces.
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "version=$EFFECTIVE" >> "$GITHUB_OUTPUT"
+          echo "owner=$OWNER_LC" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -62,11 +62,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build add-on image
-        uses: home-assistant/builder@2025.03.0
+        uses: home-assistant/builder@2026.06.0
         with:
           args: |
             --${{ matrix.arch }}
-            --target /github/workspace/addons/https2wss
-            --image "${{ github.repository_owner }}/{arch}-https2wss"
-            --docker-hub ghcr.io
+            --target addons/https2wss
+            --image "ghcr.io/${{ steps.meta.outputs.owner }}/{arch}-https2wss"
+            --version ${{ steps.meta.outputs.version }}
             --addon
