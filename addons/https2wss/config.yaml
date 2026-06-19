@@ -8,9 +8,9 @@ url: "https://github.com/Ruffo324/wsbridge"
 # Pushed by .github/workflows/addon-build.yml.
 image: "ghcr.io/ruffo324/{arch}-https2wss"
 arch:
+  # armv7 omitted: Node 24 dropped armv7 from all official Docker images.
   - amd64
   - aarch64
-  - armv7
 startup: services
 boot: auto
 init: false
