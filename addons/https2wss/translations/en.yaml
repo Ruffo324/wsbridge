@@ -1,0 +1,47 @@
+configuration:
+  token:
+    name: "Bearer token"
+    description: >-
+      Token clients pass in the `Authorization: Bearer <token>` header to authenticate
+      with the bridge. Leave empty to auto-generate one at first start — the generated
+      value is logged at startup and saved to `/data/generated-token.txt`.
+  upstream_profile_name:
+    name: "Upstream profile name"
+    description: >-
+      Internal name the bridge uses for the upstream WebSocket profile. Clients open
+      sessions by referencing this name. Default `ha-core`.
+  upstream_url:
+    name: "Upstream WebSocket URL"
+    description: >-
+      WebSocket URL of the service the bridge proxies to. Default
+      `ws://homeassistant:8123/api/websocket` targets Home Assistant Core via its
+      Supervisor-internal hostname.
+  upstream_allow_private_network:
+    name: "Allow private network"
+    description: >-
+      Required when the upstream is on a private IP range (the default HA Core URL
+      is). Set to `false` only for public upstreams to enforce SSRF protections.
+  allowed_origins:
+    name: "Allowed CORS origins"
+    description: >-
+      List of exact origin URLs allowed to call the bridge from a browser. Leave
+      empty to skip the CORS allowlist. Example: `https://my-dashboard.example.com`.
+  log_level:
+    name: "Log level"
+    description: >-
+      Logger verbosity. Use `debug` or `trace` only when diagnosing problems —
+      `trace` may leak frame contents into the Supervisor log.
+  idle_timeout_ms:
+    name: "Session idle timeout (ms)"
+    description: >-
+      A session is closed after this many milliseconds of inactivity. Default
+      120000 (2 minutes). Increase only if clients keep long-idle sessions open.
+  max_frame_bytes:
+    name: "Max frame size (bytes)"
+    description: >-
+      Reject any single WebSocket frame larger than this. Default 1048576 (1 MiB).
+      Larger frames are inefficient over HTTPS bridging anyway; raise only if
+      you have a specific reason.
+
+network:
+  8080/tcp: "https2wss bridge HTTP API (POST /v1/sessions, GET /events, …)"
