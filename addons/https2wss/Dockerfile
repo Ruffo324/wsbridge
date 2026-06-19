@@ -22,7 +22,11 @@ ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
 # ---------------------------------------------------------------------------
 # Stage 1: build the proxy package in a clean Node 24 image
 # ---------------------------------------------------------------------------
-FROM node:24-alpine AS proxy-builder
+# node:24-alpine has no linux/arm/v7 manifest on Docker Hub — alpine variants
+# are amd64 + arm64 only. node:24 (Debian) covers amd64/arm64/armv7 and is
+# fine here since this is a transient builder stage; the runtime stage stays
+# small (HA base + apk add nodejs).
+FROM node:24 AS proxy-builder
 
 RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
 
