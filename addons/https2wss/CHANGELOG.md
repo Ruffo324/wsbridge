@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.3 - 2026-06-20
+
+- Fix: promote `@https2wss/client` + `@https2wss/home-assistant-adapter`
+  from `devDependencies` to `dependencies` in `@https2wss/proxy`. They were
+  excluded by `pnpm deploy --prod` in 0.1.1/0.1.2, so the new P14 static
+  routes (`/_/lib/client/index.js`, `/_/lib/ha/index.js`) returned 404 in
+  the deployed image — the browser bundles never landed in the runtime
+  `node_modules/`. Locally verified all three routes return 200 with the
+  bundled JS + `cors: *`.
+
+## 0.1.2 - 2026-06-20
+
+- Dockerfile: `chmod +x` on the s6 init + service scripts so the container
+  doesn't crashloop with `Permission denied` (exit 126) on first start
+  when Docker COPY strips the +x bit on some hosts.
+
 ## 0.1.1 - 2026-06-20
 
 - Serve the browser client + HA-adapter bundles and the frontend WebSocket
