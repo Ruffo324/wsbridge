@@ -48,6 +48,12 @@ RUN pnpm exec tsc -b
 # inject-workspace-packages is not set.
 RUN pnpm --filter @https2wss/proxy deploy --prod /out --legacy
 
+# Sanity-check the deployed dist: a cli.js that cannot be imported at all
+# would fail this --help invocation and the image build aborts. Catches
+# missing-module / broken-symlink regressions at build time instead of at
+# the user's first add-on start.
+RUN node /out/dist/cli.js --help > /dev/null
+
 # ---------------------------------------------------------------------------
 # Stage 2: the actual add-on image
 # ---------------------------------------------------------------------------

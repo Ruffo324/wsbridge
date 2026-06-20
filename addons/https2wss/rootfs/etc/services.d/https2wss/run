@@ -6,6 +6,10 @@
 # Waits for /data/config.yml (rendered by cont-init.d/01-config.sh) and then
 # execs the proxy.  s6-overlay replaces this process with node; on exit s6
 # will invoke the finish script and optionally restart the service.
+#
+# Pre-exec diagnostics are intentionally verbose: if node fails to start with
+# MODULE_NOT_FOUND or similar, these lines stay in the HA log even when node's
+# own stderr buffer gets truncated by the Supervisor log viewer.
 # -----------------------------------------------------------------------------
 set -e
 
@@ -14,5 +18,11 @@ if [ ! -f /data/config.yml ]; then
   exit 1
 fi
 
+bashio::log.info "node:        $(node --version) at $(command -v node)"
+bashio::log.info "cli.js:      $(stat -c '%s bytes (mtime %y)' /opt/https2wss/dist/cli.js 2>&1 || echo MISSING)"
+bashio::log.info "node_modules: $(find /opt/https2wss/node_modules -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l) top-level entries"
+bashio::log.info "config:      $(wc -c < /data/config.yml) bytes at /data/config.yml"
 bashio::log.info "Starting https2wss proxy"
-exec node /opt/https2wss/dist/cli.js --config /data/config.yml
+
+# --enable-source-maps gives TS source positions in any uncaught stack trace.
+exec node --enable-source-maps /opt/https2wss/dist/cli.js --config /data/config.yml
