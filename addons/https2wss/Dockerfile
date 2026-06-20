@@ -71,6 +71,7 @@ COPY --from=proxy-builder /out /opt/https2wss
 # s6 init scripts and service definitions (rootfs/ mirrors the container root).
 # The build context is the repository root, so reference the full path.
 COPY addons/https2wss/rootfs /
+RUN chmod +x /etc/cont-init.d/01-config.sh /etc/services.d/https2wss/run /etc/services.d/https2wss/finish
 
 EXPOSE 8080
 # The hassio-addons/base image provides its own CMD/ENTRYPOINT via s6-overlay.
