@@ -100,6 +100,12 @@ importers:
       '@fastify/cors':
         specifier: ^11
         version: 11.2.0
+      '@https2wss/client':
+        specifier: workspace:*
+        version: link:../client
+      '@https2wss/home-assistant-adapter':
+        specifier: workspace:*
+        version: link:../adapters/home-assistant
       '@https2wss/protocol':
         specifier: workspace:*
         version: link:../protocol
