@@ -12,7 +12,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:e2e": "echo \"e2e wired in P10\" && exit 0",
-    "build": "tsc -b && tsup --config packages/client/tsup.config.ts",
+    "build": "tsc -b && tsup --config packages/client/tsup.config.ts && tsup --config packages/client/tsup.browser.config.ts && tsup --config packages/adapters/home-assistant/tsup.config.ts && node -e \"const{cpSync,mkdirSync}=require('fs');mkdirSync('packages/proxy/dist/transports/staticAssets',{recursive:true});cpSync('packages/proxy/src/transports/staticAssets/wsbridge-shim.js','packages/proxy/dist/transports/staticAssets/wsbridge-shim.js');\"",
     "dev": "echo \"set in later phases\""
   },
   "devDependencies": {

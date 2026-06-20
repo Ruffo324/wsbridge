@@ -104,6 +104,22 @@ event subscriptions. Events that fire during the brief gap are not delivered
 on the `HomeAssistantClient` instance when re-authentication succeeds, or a
 `"reauth-failed"` event if the token was rejected.
 
+## Frontend fallback for HA's own Lovelace UI
+
+The bridge can also serve as a transparent transport for the HA Lovelace frontend
+itself — without custom integrations or cards. A small JavaScript shim replaces
+`window.WebSocket` for `/api/websocket` connections so the built-in UI falls back
+to the bridge automatically when native WebSocket fails.
+
+See [docs/ha-frontend-fallback.md](https://github.com/Ruffo324/wsbridge/blob/master/docs/ha-frontend-fallback.md)
+for the complete setup guide including:
+
+- Downloading and editing the shim (or fetching it directly from the bridge via
+  `GET /_/shim/wsbridge.js`).
+- Placing the shim at `/config/www/wsbridge-shim.js`.
+- The `configuration.yaml` snippet (`frontend.extra_module_url`).
+- Verifying the fallback is working in DevTools.
+
 ## Troubleshooting
 
 - **Add-on fails to start**: Check the log tab.  The most common cause is a malformed

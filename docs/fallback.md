@@ -222,3 +222,11 @@ ws.onmessage = (ev) => {
   if (msg.type === "auth_ok") console.log("authenticated");
 };
 ```
+
+## Frontend fallback for HA's own Lovelace UI
+
+If you want the HA Lovelace frontend itself to automatically fall back to the bridge
+when native WebSocket is unavailable, see
+[docs/ha-frontend-fallback.md](ha-frontend-fallback.md). That guide walks through
+dropping a WebSocket shim into `/config/www/` so the built-in HA UI uses the bridge
+transparently — no custom card or integration required.

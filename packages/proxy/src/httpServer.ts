@@ -12,6 +12,7 @@ import { registerCreateSession } from "./transports/createSession.js";
 import { errorToHttp } from "./transports/errorMap.js";
 import { registerHealthz } from "./transports/healthz.js";
 import { registerPoll } from "./transports/poll.js";
+import { registerStaticAssets } from "./transports/staticAssets.js";
 import { registerSend } from "./transports/send.js";
 import { registerSse } from "./transports/sse.js";
 import type { UpstreamAdapter, UpstreamAdapterFactory } from "./upstream/UpstreamAdapter.js";
@@ -79,9 +80,17 @@ export function createHttpServer(deps: HttpServerDeps): HttpServer {
 
   // ── Auth hook ────────────────────────────────────────────────────────────
 
+  // Paths that are intentionally unauthenticated (static assets + healthz).
+  // Checked in the auth hook below so these routes never require a bearer token.
+  const UNAUTHENTICATED_PREFIXES = [
+    "/healthz",
+    "/_/lib/",
+    "/_/shim/",
+  ] as const;
+
   fastify.addHook("onRequest", async (req: FastifyRequest, reply) => {
-    // Skip auth for healthz
-    if (req.url === "/healthz") return;
+    // Skip auth for static assets and healthz
+    if (UNAUTHENTICATED_PREFIXES.some((prefix) => req.url === prefix || req.url.startsWith(prefix))) return;
 
     try {
       const { tokenId } = auth.verifyAuthorizationHeader(req.headers.authorization);
@@ -108,6 +117,10 @@ export function createHttpServer(deps: HttpServerDeps): HttpServer {
   });
 
   // ── Routes ───────────────────────────────────────────────────────────────
+
+  // Static assets are registered first (before auth routes) for clarity,
+  // though route registration order does not affect the hook skip list above.
+  registerStaticAssets(fastify);
 
   registerHealthz(fastify, sessionManager);
 

@@ -577,6 +577,51 @@ describe("SSE CORS headers regression (reply.hijack bypasses @fastify/cors)", ()
   });
 });
 
+describe("static asset routes (unauthenticated)", () => {
+  it("14a — GET /_/lib/client/index.js returns 200 application/javascript with no auth", async () => {
+    const res = await fetch(`${baseUrl}/_/lib/client/index.js`);
+    // If the build hasn't run yet the route returns 404 — skip gracefully.
+    if (res.status === 404) {
+      const body = (await res.json()) as { error: string };
+      if (body.error.includes("build")) {
+        console.warn("/_/lib/client/index.js: build not present — skipping body check");
+        return;
+      }
+    }
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/javascript");
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    const text = await res.text();
+    expect(text).toMatch(/ResilientWebSocket/);
+  });
+
+  it("14b — GET /_/lib/ha/index.js returns 200 application/javascript with no auth", async () => {
+    const res = await fetch(`${baseUrl}/_/lib/ha/index.js`);
+    if (res.status === 404) {
+      const body = (await res.json()) as { error: string };
+      if (body.error.includes("build")) {
+        console.warn("/_/lib/ha/index.js: build not present — skipping body check");
+        return;
+      }
+    }
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/javascript");
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    const text = await res.text();
+    expect(text).toMatch(/HomeAssistantClient/);
+  });
+
+  it("14c — GET /_/shim/wsbridge.js returns 200 with placeholder tokens intact", async () => {
+    const res = await fetch(`${baseUrl}/_/shim/wsbridge.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/javascript");
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    const text = await res.text();
+    expect(text).toContain("BRIDGE_URL_PLACEHOLDER");
+    expect(text).toContain("BRIDGE_TOKEN_PLACEHOLDER");
+  });
+});
+
 describe("GET /healthz", () => {
   it("11 — returns 200 with status ok (no auth required)", async () => {
     const res = await fetch(`${baseUrl}/healthz`);
