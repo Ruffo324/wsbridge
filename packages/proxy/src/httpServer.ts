@@ -12,9 +12,9 @@ import { registerCreateSession } from "./transports/createSession.js";
 import { errorToHttp } from "./transports/errorMap.js";
 import { registerHealthz } from "./transports/healthz.js";
 import { registerPoll } from "./transports/poll.js";
-import { registerStaticAssets } from "./transports/staticAssets.js";
 import { registerSend } from "./transports/send.js";
 import { registerSse } from "./transports/sse.js";
+import { registerStaticAssets } from "./transports/staticAssets.js";
 import type { UpstreamAdapter, UpstreamAdapterFactory } from "./upstream/UpstreamAdapter.js";
 import { createWebSocketUpstreamAdapter } from "./upstream/WebSocketUpstreamAdapter.js";
 
@@ -82,15 +82,12 @@ export function createHttpServer(deps: HttpServerDeps): HttpServer {
 
   // Paths that are intentionally unauthenticated (static assets + healthz).
   // Checked in the auth hook below so these routes never require a bearer token.
-  const UNAUTHENTICATED_PREFIXES = [
-    "/healthz",
-    "/_/lib/",
-    "/_/shim/",
-  ] as const;
+  const UNAUTHENTICATED_PREFIXES = ["/healthz", "/_/lib/", "/_/shim/"] as const;
 
   fastify.addHook("onRequest", async (req: FastifyRequest, reply) => {
     // Skip auth for static assets and healthz
-    if (UNAUTHENTICATED_PREFIXES.some((prefix) => req.url === prefix || req.url.startsWith(prefix))) return;
+    if (UNAUTHENTICATED_PREFIXES.some((prefix) => req.url === prefix || req.url.startsWith(prefix)))
+      return;
 
     try {
       const { tokenId } = auth.verifyAuthorizationHeader(req.headers.authorization);

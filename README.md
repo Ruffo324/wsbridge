@@ -148,9 +148,10 @@ See [docs/limitations.md](./docs/limitations.md) for the full list.
 3. Find **https2wss** in the store and click **Install**.
 
 The workflow at [.github/workflows/addon-build.yml](.github/workflows/addon-build.yml)
-(using `home-assistant/builder@2025.03.0`) builds multi-arch images for `amd64`,
-`aarch64`, and `armv7` and publishes them to GHCR on every push to `master` that
-touches the add-on or package source.
+(using `docker/build-push-action` with the repo root as build context) builds
+multi-arch images for `amd64` and `aarch64` and publishes them to GHCR on every
+push to `master` that touches the add-on or package source. `armv7` is omitted —
+Node 24 has no armv7 Docker image.
 
 ## Home Assistant
 

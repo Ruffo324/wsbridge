@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.1 - 2026-06-20
+
+- Serve the browser client + HA-adapter bundles and the frontend WebSocket
+  shim directly from the bridge (`GET /_/lib/client/index.js`,
+  `/_/lib/ha/index.js`, `/_/shim/wsbridge.js`) so Lovelace can auto-fall-back
+  to the bridge. See `docs/ha-frontend-fallback.md`.
+- Pre-exec diagnostics in the s6 run script + a build-time `cli.js --help`
+  sanity check to catch a broken deploy before first start.
+- CI: fix biome `check` formatting errors that were failing the pipeline.
+
 ## 0.1.0 - 2026-06-16 - Initial release
 
 - First Home Assistant add-on package for https2wss.
