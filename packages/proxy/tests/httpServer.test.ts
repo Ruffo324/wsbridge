@@ -681,7 +681,8 @@ describe("static asset routes (unauthenticated)", () => {
           forwarded: req.headers.forwarded == null ? null : String(req.headers.forwarded),
           xForwardedFor:
             req.headers["x-forwarded-for"] == null ? null : String(req.headers["x-forwarded-for"]),
-          contentType: req.headers["content-type"] == null ? null : String(req.headers["content-type"]),
+          contentType:
+            req.headers["content-type"] == null ? null : String(req.headers["content-type"]),
           body: Buffer.concat(chunks).toString("utf-8"),
         };
         res.writeHead(200, { "content-type": "application/json" });

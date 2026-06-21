@@ -212,7 +212,10 @@ export function registerFrontendProxy(fastify: FastifyInstance, config: ServerCo
           redirect: "manual",
         });
       } catch (error) {
-        fastify.log.error({ error, upstreamUrl, method, url: req.url }, "frontend proxy request failed");
+        fastify.log.error(
+          { error, upstreamUrl, method, url: req.url },
+          "frontend proxy request failed",
+        );
         throw error;
       }
 
