@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5 - 2026-06-21
+
+- Fix the add-on image build so browser bundles for `@https2wss/client` are
+  generated before `pnpm deploy`. This makes the injected Home Assistant
+  frontend WebSocket fallback module load correctly in browsers.
+
 ## 0.1.4 - 2026-06-21
 
 - Add an optional Home Assistant frontend reverse proxy. When enabled, the add-on

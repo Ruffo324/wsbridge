@@ -41,7 +41,7 @@ COPY examples/echo/package.json examples/echo/tsconfig.json examples/echo/
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
-RUN pnpm exec tsc -b
+RUN pnpm build
 
 # Deploy the proxy into a self-contained production directory.
 # --legacy uses classic deploy behaviour (symlink → copy), required when
@@ -53,6 +53,7 @@ RUN pnpm --filter @https2wss/proxy deploy --prod /out --legacy
 # missing-module / broken-symlink regressions at build time instead of at
 # the user's first add-on start.
 RUN node /out/dist/cli.js --help > /dev/null
+RUN test -s /out/node_modules/@https2wss/client/dist/browser/index.js
 
 # ---------------------------------------------------------------------------
 # Stage 2: the actual add-on image
