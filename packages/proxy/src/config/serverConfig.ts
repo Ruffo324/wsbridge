@@ -37,6 +37,19 @@ const loggingSchema = z.object({
   redactHeaders: z.array(z.string()).default(["authorization", "cookie"]),
 });
 
+const frontendProxySchema = z.object({
+  enabled: z.boolean().default(false),
+  /** Where the HA UI is exposed. Use "/" for a drop-in UI and keep /v1, /_/ and /healthz reserved for the bridge. */
+  pathPrefix: z.string().default("/"),
+  upstreamUrl: z.string().url().default("http://homeassistant:8123"),
+  injectWebSocketShim: z.boolean().default(true),
+  bridgeUrl: z.string().default(""),
+  bridgeToken: z.string().default(""),
+  upstreamProfile: z.string().default("ha-core"),
+  nativeConnectTimeoutMs: z.number().int().nonnegative().default(1500),
+  heartbeatTimeoutMs: z.number().int().positive().default(30_000),
+});
+
 export const serverConfigSchema = z.object({
   server: serverSchema.default({ host: "0.0.0.0", port: 8080 }),
   security: securityConfigSchema,
@@ -56,6 +69,17 @@ export const serverConfigSchema = z.object({
     longPoll: { maxTimeoutMs: 30_000 },
   }),
   logging: loggingSchema.default({ level: "info", redactHeaders: ["authorization", "cookie"] }),
+  frontendProxy: frontendProxySchema.default({
+    enabled: false,
+    pathPrefix: "/",
+    upstreamUrl: "http://homeassistant:8123",
+    injectWebSocketShim: true,
+    bridgeUrl: "",
+    bridgeToken: "",
+    upstreamProfile: "ha-core",
+    nativeConnectTimeoutMs: 1500,
+    heartbeatTimeoutMs: 30_000,
+  }),
 });
 
 export type ServerConfig = z.infer<typeof serverConfigSchema>;

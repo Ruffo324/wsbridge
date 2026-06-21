@@ -42,6 +42,44 @@ configuration:
       Reject any single WebSocket frame larger than this. Default 1048576 (1 MiB).
       Larger frames are inefficient over HTTPS bridging anyway; raise only if
       you have a specific reason.
+  frontend_proxy_enabled:
+    name: "Enable Home Assistant frontend proxy"
+    description: >-
+      Expose the Home Assistant web UI through this add-on and inject a WebSocket
+      fallback shim. This lets browsers use the UI through HTTPS/SSE when native
+      WebSockets are blocked. The bridge API paths `/v1`, `/_` and `/healthz`
+      remain reserved for the add-on.
+  frontend_proxy_path:
+    name: "Frontend proxy path"
+    description: >-
+      Path where the proxied Home Assistant UI is mounted. Use `/` for the most
+      transparent mode; advanced users may use a subpath, but some HA frontend
+      assets use absolute URLs.
+  frontend_proxy_upstream_url:
+    name: "Frontend upstream URL"
+    description: >-
+      HTTP URL of Home Assistant Core for the web UI proxy. Default
+      `http://homeassistant:8123`.
+  frontend_proxy_inject_websocket_shim:
+    name: "Inject WebSocket shim"
+    description: >-
+      Inject a small module into HTML responses that replaces HA's `/api/websocket`
+      connection with the https2wss bridge fallback.
+  frontend_proxy_bridge_url:
+    name: "Public bridge URL override"
+    description: >-
+      Optional public URL the injected shim should use for bridge calls. Leave
+      empty to use the browser's current origin.
+  frontend_proxy_native_connect_timeout_ms:
+    name: "Native WebSocket timeout (ms)"
+    description: >-
+      How long the shim tries a native WebSocket before falling back to the bridge.
+      Set to 0 to fall back immediately in heavily restricted networks.
+  frontend_proxy_heartbeat_timeout_ms:
+    name: "WebSocket heartbeat timeout (ms)"
+    description: >-
+      If the native WebSocket opens but then receives no messages for this long,
+      the shim switches to the bridge.
 
 network:
   8080/tcp: "https2wss bridge HTTP API (POST /v1/sessions, GET /events, …)"

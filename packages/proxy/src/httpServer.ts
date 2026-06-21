@@ -10,6 +10,7 @@ import type { SessionManager } from "./sessions/SessionManager.js";
 import { registerClose } from "./transports/close.js";
 import { registerCreateSession } from "./transports/createSession.js";
 import { errorToHttp } from "./transports/errorMap.js";
+import { isFrontendProxyRequest, registerFrontendProxy } from "./transports/frontendProxy.js";
 import { registerHealthz } from "./transports/healthz.js";
 import { registerPoll } from "./transports/poll.js";
 import { registerSend } from "./transports/send.js";
@@ -86,7 +87,10 @@ export function createHttpServer(deps: HttpServerDeps): HttpServer {
 
   fastify.addHook("onRequest", async (req: FastifyRequest, reply) => {
     // Skip auth for static assets and healthz
-    if (UNAUTHENTICATED_PREFIXES.some((prefix) => req.url === prefix || req.url.startsWith(prefix)))
+    if (
+      UNAUTHENTICATED_PREFIXES.some((prefix) => req.url === prefix || req.url.startsWith(prefix)) ||
+      isFrontendProxyRequest(config, req.url)
+    )
       return;
 
     try {
@@ -138,6 +142,8 @@ export function createHttpServer(deps: HttpServerDeps): HttpServer {
   registerSse(fastify, { config, sessionManager });
 
   registerClose(fastify, { sessionManager, adapterMap });
+
+  registerFrontendProxy(fastify, config);
 
   // ── Tick interval ────────────────────────────────────────────────────────
 
