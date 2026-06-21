@@ -52,7 +52,14 @@ function copyRequestHeaders(req: FastifyRequest, config: ServerConfig): Headers 
   const upstreamOrigin = new URL(config.frontendProxy.upstreamUrl).origin;
   for (const [name, value] of Object.entries(req.headers)) {
     const lower = name.toLowerCase();
-    if (HOP_BY_HOP_HEADERS.has(lower) || lower === "host" || lower === "content-length") continue;
+    if (
+      HOP_BY_HOP_HEADERS.has(lower) ||
+      lower === "host" ||
+      lower === "content-length" ||
+      lower === "forwarded" ||
+      lower.startsWith("x-forwarded-")
+    )
+      continue;
     if (lower === "origin") {
       headers.set(name, upstreamOrigin);
       continue;

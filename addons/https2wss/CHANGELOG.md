@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 - 2026-06-21
+
+- Strip incoming `Forwarded` and `X-Forwarded-*` headers before proxying HA
+  requests upstream. Traefik adds `X-Forwarded-For` by default, and Home
+  Assistant/aiohttp returns `400 Bad Request` if that header is passed through
+  unchanged to the add-on's upstream path.
+
 ## 0.1.6 - 2026-06-21
 
 - Fix the add-on's frontend proxy to accept `application/x-www-form-urlencoded`
