@@ -253,7 +253,7 @@ export class HomeAssistantClient extends EventTarget {
             done(
               new HomeAssistantError(
                 "PROTOCOL_ERROR",
-                `Expected auth_required, got: ${String((parsed as Record<string, unknown>)["type"] ?? "unknown")}`,
+                `Expected auth_required, got: ${String((parsed as Record<string, unknown>).type ?? "unknown")}`,
               ),
             );
           }
@@ -270,7 +270,7 @@ export class HomeAssistantClient extends EventTarget {
             done(
               new HomeAssistantError(
                 "PROTOCOL_ERROR",
-                `Expected auth_ok or auth_invalid, got: ${String((parsed as Record<string, unknown>)["type"] ?? "unknown")}`,
+                `Expected auth_ok or auth_invalid, got: ${String((parsed as Record<string, unknown>).type ?? "unknown")}`,
               ),
             );
           }

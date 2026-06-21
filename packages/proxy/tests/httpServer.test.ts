@@ -664,12 +664,7 @@ describe("static asset routes (unauthenticated)", () => {
 
   it("14e — auth/token requests are forwarded with form body and upstream origin", async () => {
     await server.stop();
-    let seen: {
-      origin: string | null;
-      referer: string | null;
-      contentType: string | null;
-      body: string;
-    } | null = null;
+    let seen: any = null;
 
     const upstream = createServer((req, res) => {
       if (req.url !== "/auth/token") {
@@ -681,9 +676,13 @@ describe("static asset routes (unauthenticated)", () => {
       req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
       req.on("end", () => {
         seen = {
-          origin: req.headers.origin ?? null,
-          referer: req.headers.referer ?? null,
-          contentType: req.headers["content-type"] ?? null,
+          origin: req.headers.origin == null ? null : String(req.headers.origin),
+          referer: req.headers.referer == null ? null : String(req.headers.referer),
+          forwarded: req.headers.forwarded == null ? null : String(req.headers.forwarded),
+          xForwardedFor:
+            req.headers["x-forwarded-for"] == null ? null : String(req.headers["x-forwarded-for"]),
+          contentType:
+            req.headers["content-type"] == null ? null : String(req.headers["content-type"]),
           body: Buffer.concat(chunks).toString("utf-8"),
         };
         res.writeHead(200, { "content-type": "application/json" });
@@ -720,11 +719,13 @@ describe("static asset routes (unauthenticated)", () => {
       });
       expect(proxyRes.status).toBe(200);
       expect(await proxyRes.json()).toEqual({ ok: true });
-      expect(seen).not.toBeNull();
-      expect(seen?.origin).toBe(upstreamUrl);
-      expect(seen?.referer).toBe(`${upstreamUrl}/auth/authorize`);
-      expect(seen?.contentType).toContain("application/x-www-form-urlencoded");
-      expect(seen?.body).toBe("grant_type=authorization_code&code=foo&client_id=bar");
+      const snapshot = seen as any;
+      expect(snapshot.origin).toBe(upstreamUrl);
+      expect(snapshot.referer).toBe(`${upstreamUrl}/auth/authorize`);
+      expect(snapshot.forwarded).toBeNull();
+      expect(snapshot.xForwardedFor).toBeNull();
+      expect(snapshot.contentType).toContain("application/x-www-form-urlencoded");
+      expect(snapshot.body).toBe("grant_type=authorization_code&code=foo&client_id=bar");
     } finally {
       await closeHttpServer(upstream);
     }
