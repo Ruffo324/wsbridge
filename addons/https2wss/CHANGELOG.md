@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6 - 2026-06-21
+
+- Fix the add-on's frontend proxy to accept `application/x-www-form-urlencoded`
+  bodies and rewrite `Origin`/`Referer` to the upstream HA origin. This keeps
+  `/auth/token` working during the HA login flow when the browser is talking to
+  the proxy instead of HA directly.
+
 ## 0.1.5 - 2026-06-21
 
 - Fix the add-on image build so browser bundles for `@https2wss/client` are

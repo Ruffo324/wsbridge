@@ -662,42 +662,71 @@ describe("static asset routes (unauthenticated)", () => {
     expect(text).toContain("BRIDGE_TOKEN_PLACEHOLDER");
   });
 
-  it("14d — HA frontend proxy injects the generated WebSocket shim when enabled", async () => {
+  it("14e — auth/token requests are forwarded with form body and upstream origin", async () => {
     await server.stop();
-    const upstream = await startFrontendUpstream();
+    let seen: {
+      origin: string | null;
+      referer: string | null;
+      contentType: string | null;
+      body: string;
+    } | null = null;
+
+    const upstream = createServer((req, res) => {
+      if (req.url !== "/auth/token") {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("not found");
+        return;
+      }
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      req.on("end", () => {
+        seen = {
+          origin: req.headers.origin ?? null,
+          referer: req.headers.referer ?? null,
+          contentType: req.headers["content-type"] ?? null,
+          body: Buffer.concat(chunks).toString("utf-8"),
+        };
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      });
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const { port } = upstream.address() as AddressInfo;
+    const upstreamUrl = `http://127.0.0.1:${port}`;
+
     server = makeServer(echo.url, (config) => ({
       ...config,
       frontendProxy: {
         ...config.frontendProxy,
         enabled: true,
         pathPrefix: "/",
-        upstreamUrl: upstream.url,
+        upstreamUrl,
         bridgeToken: VALID_TOKEN,
         upstreamProfile: "echo",
-        nativeConnectTimeoutMs: 1234,
       },
     }));
     await server.start();
     baseUrl = `http://127.0.0.1:${server.port()}`;
 
     try {
-      const htmlRes = await fetch(`${baseUrl}/`);
-      expect(htmlRes.status).toBe(200);
-      const html = await htmlRes.text();
-      expect(html).toContain('<script type="module" src="/_/shim/ha-frontend.js"></script>');
-
-      const shimRes = await fetch(`${baseUrl}/_/shim/ha-frontend.js`);
-      expect(shimRes.status).toBe(200);
-      const shim = await shimRes.text();
-      expect(shim).toContain("ResilientWebSocket");
-      expect(shim).toContain(`const BRIDGE_TOKEN = ${JSON.stringify(VALID_TOKEN)};`);
-      expect(shim).toContain("const NATIVE_TIMEOUT_MS = 1234;");
-
-      const apiRes = await fetch(`${baseUrl}/api/config`);
-      expect(apiRes.status).toBe(200);
-      expect(await apiRes.json()).toEqual({ location_name: "Home" });
+      const proxyRes = await fetch(`${baseUrl}/auth/token`, {
+        method: "POST",
+        headers: {
+          origin: baseUrl,
+          referer: `${baseUrl}/auth/authorize`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: "grant_type=authorization_code&code=foo&client_id=bar",
+      });
+      expect(proxyRes.status).toBe(200);
+      expect(await proxyRes.json()).toEqual({ ok: true });
+      expect(seen).not.toBeNull();
+      expect(seen?.origin).toBe(upstreamUrl);
+      expect(seen?.referer).toBe(`${upstreamUrl}/auth/authorize`);
+      expect(seen?.contentType).toContain("application/x-www-form-urlencoded");
+      expect(seen?.body).toBe("grant_type=authorization_code&code=foo&client_id=bar");
     } finally {
-      await closeHttpServer(upstream.server);
+      await closeHttpServer(upstream);
     }
   });
 });

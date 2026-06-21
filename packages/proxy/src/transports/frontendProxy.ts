@@ -47,11 +47,27 @@ function buildUpstreamUrl(config: ServerConfig, requestUrl: string): string {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-function copyRequestHeaders(req: FastifyRequest): Headers {
+function copyRequestHeaders(req: FastifyRequest, config: ServerConfig): Headers {
   const headers = new Headers();
+  const upstreamOrigin = new URL(config.frontendProxy.upstreamUrl).origin;
   for (const [name, value] of Object.entries(req.headers)) {
     const lower = name.toLowerCase();
     if (HOP_BY_HOP_HEADERS.has(lower) || lower === "host" || lower === "content-length") continue;
+    if (lower === "origin") {
+      headers.set(name, upstreamOrigin);
+      continue;
+    }
+    if (lower === "referer") {
+      if (typeof value === "string" && value.length > 0) {
+        try {
+          const referer = new URL(value);
+          headers.set(name, `${upstreamOrigin}${referer.pathname}${referer.search}`);
+        } catch {
+          headers.set(name, upstreamOrigin);
+        }
+      }
+      continue;
+    }
     if (Array.isArray(value)) {
       for (const item of value) headers.append(name, item);
     } else if (value !== undefined) {
@@ -130,13 +146,29 @@ function injectShim(html: string): string {
   return `${tag}\n${html}`;
 }
 
-async function bodyForProxy(req: FastifyRequest): Promise<BodyInit | undefined> {
+function bodyForProxy(req: FastifyRequest): Promise<BodyInit | undefined> | BodyInit | undefined {
   if (req.method === "GET" || req.method === "HEAD") return undefined;
   const body = req.body as unknown;
   if (body === undefined || body === null) return undefined;
+  const contentType = String(req.headers["content-type"] ?? "").toLowerCase();
   if (typeof body === "string") return body;
   if (Buffer.isBuffer(body)) {
     return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer;
+  }
+  if (ArrayBuffer.isView(body)) {
+    return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer;
+  }
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+      if (value === undefined || value === null) continue;
+      if (Array.isArray(value)) {
+        for (const item of value) params.append(key, String(item));
+      } else {
+        params.set(key, String(value));
+      }
+    }
+    return params.toString();
   }
   return JSON.stringify(body);
 }
@@ -164,12 +196,18 @@ export function registerFrontendProxy(fastify: FastifyInstance, config: ServerCo
 
       const upstreamUrl = buildUpstreamUrl(config, req.url);
       const method = req.method;
-      const upstream = await fetch(upstreamUrl, {
-        method,
-        headers: copyRequestHeaders(req),
-        body: await bodyForProxy(req),
-        redirect: "manual",
-      });
+      let upstream: Response;
+      try {
+        upstream = await fetch(upstreamUrl, {
+          method,
+          headers: copyRequestHeaders(req, config),
+          body: await bodyForProxy(req),
+          redirect: "manual",
+        });
+      } catch (error) {
+        fastify.log.error({ error, upstreamUrl, method, url: req.url }, "frontend proxy request failed");
+        throw error;
+      }
 
       copyResponseHeaders(upstream, reply);
       reply.code(upstream.status);

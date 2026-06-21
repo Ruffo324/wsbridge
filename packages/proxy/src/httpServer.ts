@@ -79,6 +79,12 @@ export function createHttpServer(deps: HttpServerDeps): HttpServer {
     credentials: config.security.cors.allowCredentials,
   });
 
+  fastify.addContentTypeParser(
+    "application/x-www-form-urlencoded",
+    { parseAs: "string" },
+    (_req, body, done) => done(null, body),
+  );
+
   // ── Auth hook ────────────────────────────────────────────────────────────
 
   // Paths that are intentionally unauthenticated (static assets + healthz).
@@ -109,6 +115,7 @@ export function createHttpServer(deps: HttpServerDeps): HttpServer {
   // ── Global error handler ─────────────────────────────────────────────────
 
   fastify.setErrorHandler((err, _req, reply) => {
+    fastify.log.error({ err }, "request failed");
     const { status, body } = errorToHttp(err);
     const headers: Record<string, string> = {};
     if (err instanceof BridgeError && err.code === "AUTH_REQUIRED") {
