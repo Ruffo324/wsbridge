@@ -74,6 +74,16 @@ UPSTREAM_ALLOW_PRIVATE="$(opt_bool 'upstream_allow_private_network')"
 LOG_LEVEL="$(opt_str 'log_level')"
 IDLE_TIMEOUT="$(opt_int 'idle_timeout_ms')"
 MAX_FRAME="$(opt_int 'max_frame_bytes')"
+FRONTEND_PROXY_ENABLED="$(opt_bool 'frontend_proxy_enabled')"
+FRONTEND_PROXY_PATH="$(opt_str 'frontend_proxy_path')"
+FRONTEND_PROXY_UPSTREAM="$(opt_str 'frontend_proxy_upstream_url')"
+FRONTEND_PROXY_INJECT="$(opt_bool 'frontend_proxy_inject_websocket_shim')"
+if ! jq -e 'has("frontend_proxy_inject_websocket_shim")' "${OPTIONS_FILE}" >/dev/null; then
+  FRONTEND_PROXY_INJECT=true
+fi
+FRONTEND_PROXY_BRIDGE_URL="$(opt_str 'frontend_proxy_bridge_url')"
+FRONTEND_PROXY_NATIVE_TIMEOUT="$(opt_int 'frontend_proxy_native_connect_timeout_ms')"
+FRONTEND_PROXY_HEARTBEAT_TIMEOUT="$(opt_int 'frontend_proxy_heartbeat_timeout_ms')"
 
 # Apply defaults if the option file is missing any key (e.g. in older installs).
 [ -z "${UPSTREAM_PROFILE}" ]   && UPSTREAM_PROFILE="ha-core"
@@ -81,6 +91,10 @@ MAX_FRAME="$(opt_int 'max_frame_bytes')"
 [ -z "${LOG_LEVEL}" ]          && LOG_LEVEL="info"
 [ "${IDLE_TIMEOUT}" -le 0 ]    2>/dev/null && IDLE_TIMEOUT=120000
 [ "${MAX_FRAME}" -le 0 ]       2>/dev/null && MAX_FRAME=1048576
+[ -z "${FRONTEND_PROXY_PATH}" ]      && FRONTEND_PROXY_PATH="/"
+[ -z "${FRONTEND_PROXY_UPSTREAM}" ]  && FRONTEND_PROXY_UPSTREAM="http://homeassistant:8123"
+[ "${FRONTEND_PROXY_NATIVE_TIMEOUT}" -le 0 ]    2>/dev/null && FRONTEND_PROXY_NATIVE_TIMEOUT=1500
+[ "${FRONTEND_PROXY_HEARTBEAT_TIMEOUT}" -le 0 ] 2>/dev/null && FRONTEND_PROXY_HEARTBEAT_TIMEOUT=30000
 
 # ---------------------------------------------------------------------------
 # Resolve allowed_origins — produce a JSON array string for the YAML block.
@@ -124,6 +138,16 @@ transports:
   enabled: ["sse", "long_poll", "poll"]
 logging:
   level: "${LOG_LEVEL}"
+frontendProxy:
+  enabled: ${FRONTEND_PROXY_ENABLED}
+  pathPrefix: "${FRONTEND_PROXY_PATH}"
+  upstreamUrl: "${FRONTEND_PROXY_UPSTREAM}"
+  injectWebSocketShim: ${FRONTEND_PROXY_INJECT}
+  bridgeUrl: "${FRONTEND_PROXY_BRIDGE_URL}"
+  bridgeToken: "${TOKEN}"
+  upstreamProfile: "${UPSTREAM_PROFILE}"
+  nativeConnectTimeoutMs: ${FRONTEND_PROXY_NATIVE_TIMEOUT}
+  heartbeatTimeoutMs: ${FRONTEND_PROXY_HEARTBEAT_TIMEOUT}
 YAML
 
 bashio::log.info "Config rendered to /data/config.yml"

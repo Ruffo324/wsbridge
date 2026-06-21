@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.4 - 2026-06-21
+
+- Add an optional Home Assistant frontend reverse proxy. When enabled, the add-on
+  proxies HA Core's web UI and injects a module that wraps `window.WebSocket` so
+  `/api/websocket` can fall back to the https2wss bridge when native WebSockets
+  are blocked.
+- Add add-on options for enabling/disabling the frontend proxy, choosing the
+  proxy path/upstream URL, and tuning native WebSocket fallback timeouts.
+
 ## 0.1.3 - 2026-06-20
 
 - Fix: promote `@https2wss/client` + `@https2wss/home-assistant-adapter`

@@ -4,6 +4,7 @@
  * Uses a real WebSocket echo server on an ephemeral port.
  * The SsrfGuard is replaced with a no-op fake so loopback is allowed.
  */
+import { createServer, type Server as HttpUpstreamServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { BridgeEnvelope } from "@https2wss/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -42,6 +43,32 @@ async function startEchoServer(): Promise<{ wss: WebSocketServer; url: string; p
     });
   });
   return { wss, url: `ws://127.0.0.1:${port}`, port };
+}
+
+async function startFrontendUpstream(): Promise<{ server: HttpUpstreamServer; url: string }> {
+  const upstream = createServer((req, res) => {
+    if (req.url === "/") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end("<!doctype html><html><head><title>HA</title></head><body>ok</body></html>");
+      return;
+    }
+    if (req.url === "/api/config") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ location_name: "Home" }));
+      return;
+    }
+    res.writeHead(404, { "content-type": "text/plain" });
+    res.end("not found");
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const { port } = upstream.address() as AddressInfo;
+  return { server: upstream, url: `http://127.0.0.1:${port}` };
+}
+
+async function closeHttpServer(server: HttpUpstreamServer): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+  });
 }
 
 /** Build a minimal ServerConfig for tests. */
@@ -89,12 +116,26 @@ function makeConfig(echoWsUrl: string): ServerConfig {
       longPoll: { maxTimeoutMs: 500 }, // short for tests
     },
     logging: { level: "error", redactHeaders: ["authorization", "cookie"] },
+    frontendProxy: {
+      enabled: false,
+      pathPrefix: "/",
+      upstreamUrl: "http://127.0.0.1:1",
+      injectWebSocketShim: true,
+      bridgeUrl: "",
+      bridgeToken: VALID_TOKEN,
+      upstreamProfile: "echo",
+      nativeConnectTimeoutMs: 1500,
+      heartbeatTimeoutMs: 30_000,
+    },
   };
 }
 
 /** Build a server with the echo profile wired up. */
-function makeServer(echoWsUrl: string): HttpServer {
-  const config = makeConfig(echoWsUrl);
+function makeServer(
+  echoWsUrl: string,
+  mutateConfig?: (config: ServerConfig) => ServerConfig,
+): HttpServer {
+  const config = mutateConfig ? mutateConfig(makeConfig(echoWsUrl)) : makeConfig(echoWsUrl);
 
   const sessionManager = new SessionManager({
     sessionDefaults: {
@@ -619,6 +660,45 @@ describe("static asset routes (unauthenticated)", () => {
     const text = await res.text();
     expect(text).toContain("BRIDGE_URL_PLACEHOLDER");
     expect(text).toContain("BRIDGE_TOKEN_PLACEHOLDER");
+  });
+
+  it("14d — HA frontend proxy injects the generated WebSocket shim when enabled", async () => {
+    await server.stop();
+    const upstream = await startFrontendUpstream();
+    server = makeServer(echo.url, (config) => ({
+      ...config,
+      frontendProxy: {
+        ...config.frontendProxy,
+        enabled: true,
+        pathPrefix: "/",
+        upstreamUrl: upstream.url,
+        bridgeToken: VALID_TOKEN,
+        upstreamProfile: "echo",
+        nativeConnectTimeoutMs: 1234,
+      },
+    }));
+    await server.start();
+    baseUrl = `http://127.0.0.1:${server.port()}`;
+
+    try {
+      const htmlRes = await fetch(`${baseUrl}/`);
+      expect(htmlRes.status).toBe(200);
+      const html = await htmlRes.text();
+      expect(html).toContain('<script type="module" src="/_/shim/ha-frontend.js"></script>');
+
+      const shimRes = await fetch(`${baseUrl}/_/shim/ha-frontend.js`);
+      expect(shimRes.status).toBe(200);
+      const shim = await shimRes.text();
+      expect(shim).toContain("ResilientWebSocket");
+      expect(shim).toContain(`const BRIDGE_TOKEN = ${JSON.stringify(VALID_TOKEN)};`);
+      expect(shim).toContain("const NATIVE_TIMEOUT_MS = 1234;");
+
+      const apiRes = await fetch(`${baseUrl}/api/config`);
+      expect(apiRes.status).toBe(200);
+      expect(await apiRes.json()).toEqual({ location_name: "Home" });
+    } finally {
+      await closeHttpServer(upstream.server);
+    }
   });
 });
 
