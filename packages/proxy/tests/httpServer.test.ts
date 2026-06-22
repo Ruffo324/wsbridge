@@ -633,7 +633,7 @@ describe("static asset routes (unauthenticated)", () => {
     expect(res.headers.get("content-type")).toContain("application/javascript");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const text = await res.text();
-    expect(text).toMatch(/ResilientWebSocket/);
+    expect(text).toMatch(/Https2WssSocket/);
   });
 
   it("14b — GET /_/lib/ha/index.js returns 200 application/javascript with no auth", async () => {
@@ -661,8 +661,8 @@ describe("static asset routes (unauthenticated)", () => {
     expect(text).toContain("BRIDGE_URL_PLACEHOLDER");
     expect(text).toContain("BRIDGE_TOKEN_PLACEHOLDER");
     expect(text).toContain("function defineWebSocketConstants(socket)");
-    expect(text).toContain("return defineWebSocketConstants(new ResilientWebSocket(");
-    expect(text).toContain("webSocketCtor: NativeWS");
+    expect(text).toContain("return defineWebSocketConstants(new Https2WssSocket(");
+    expect(text).toContain("transport: \"sse\"");
   });
 
   it("14d — GET /_/shim/ha-frontend.js injects instance WebSocket constants", async () => {
@@ -686,8 +686,8 @@ describe("static asset routes (unauthenticated)", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const text = await res.text();
     expect(text).toContain("function defineWebSocketConstants(socket)");
-    expect(text).toContain("return defineWebSocketConstants(new ResilientWebSocket(");
-    expect(text).toContain("webSocketCtor: NativeWebSocket");
+    expect(text).toContain("return defineWebSocketConstants(new Https2WssSocket(");
+    expect(text).toContain("transport: \"sse\"");
   });
 
   it("14e — auth/token requests are forwarded with form body and upstream origin", async () => {
