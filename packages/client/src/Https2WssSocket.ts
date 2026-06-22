@@ -223,14 +223,23 @@ export class Https2WssSocket extends EventTarget {
 
   // ── Private ───────────────────────────────────────────────────────────────
 
-  private wireSession(session: BridgeSession): void {
-    session.on("state", (state) => {
-      if (state === "open") {
+  private applySessionState(state: "connecting" | "open" | "closing" | "closed" | "errored"): void {
+    if (state === "open") {
+      if (this._readyState !== OPEN) {
         this._readyState = OPEN;
         this.dispatchEvent(new Event("open"));
-      } else if (state === "closed" || state === "errored") {
-        void this.handleClose(1000, "");
       }
+      return;
+    }
+
+    if (state === "closed" || state === "errored") {
+      void this.handleClose(1000, "");
+    }
+  }
+
+  private wireSession(session: BridgeSession): void {
+    session.on("state", (state) => {
+      this.applySessionState(state);
     });
 
     session.on("frame", (env: BridgeEnvelope) => {
@@ -244,6 +253,8 @@ export class Https2WssSocket extends EventTarget {
     session.on("error", () => {
       this.dispatchEvent(new Event("error"));
     });
+
+    this.applySessionState(session.state);
   }
 
   private handleDataFrame(env: BridgeEnvelope): void {
