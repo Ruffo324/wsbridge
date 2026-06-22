@@ -662,6 +662,7 @@ describe("static asset routes (unauthenticated)", () => {
     expect(text).toContain("BRIDGE_TOKEN_PLACEHOLDER");
     expect(text).toContain("function defineWebSocketConstants(socket)");
     expect(text).toContain("return defineWebSocketConstants(new ResilientWebSocket(");
+    expect(text).toContain("webSocketCtor: NativeWS");
   });
 
   it("14d — GET /_/shim/ha-frontend.js injects instance WebSocket constants", async () => {
@@ -686,6 +687,7 @@ describe("static asset routes (unauthenticated)", () => {
     const text = await res.text();
     expect(text).toContain("function defineWebSocketConstants(socket)");
     expect(text).toContain("return defineWebSocketConstants(new ResilientWebSocket(");
+    expect(text).toContain("webSocketCtor: NativeWebSocket");
   });
 
   it("14e — auth/token requests are forwarded with form body and upstream origin", async () => {

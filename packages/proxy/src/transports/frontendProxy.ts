@@ -144,6 +144,7 @@ function WrappedWebSocket(url, protocols) {
         upstreamProfile: UPSTREAM_PROFILE,
         transport: "sse",
       },
+      webSocketCtor: NativeWebSocket,
       nativeConnectTimeoutMs: NATIVE_TIMEOUT_MS,
       heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
     }));

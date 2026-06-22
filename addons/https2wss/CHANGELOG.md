@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.11 - 2026-06-22
+
+- Pass the original native WebSocket constructor into `ResilientWebSocket` from
+  the Home Assistant frontend shim. Without this, the shim could recurse back
+  into its own wrapped `window.WebSocket` during the native-first probe and hang
+  the HA bootstrap on `Loading data` / `Unable to connect`.
+
 ## 0.1.10 - 2026-06-22
 
 - Expose WebSocket ready-state constants (`OPEN`, `CLOSED`, etc.) on wrapped
