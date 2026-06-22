@@ -85,6 +85,12 @@ export function createHttpServer(deps: HttpServerDeps): HttpServer {
     (_req, body, done) => done(null, body),
   );
 
+  fastify.addContentTypeParser(
+    /^multipart\/form-data(?:;.*)?$/i,
+    { parseAs: "buffer" },
+    (_req, body, done) => done(null, body),
+  );
+
   // ── Auth hook ────────────────────────────────────────────────────────────
 
   // Paths that are intentionally unauthenticated (static assets + healthz).

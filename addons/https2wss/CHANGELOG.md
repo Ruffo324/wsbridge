@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.9 - 2026-06-22
+
+- Forward Home Assistant auth callback `multipart/form-data` bodies unchanged.
+  The current HA frontend submits `/auth/token` as `FormData`; without a raw
+  multipart parser the proxy returned `500` even though urlencoded curl probes
+  worked.
+
 ## 0.1.8 - 2026-06-22
 
 - Prevent Home Assistant's internal `Access-Control-*` response headers from leaking
