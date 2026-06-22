@@ -660,6 +660,32 @@ describe("static asset routes (unauthenticated)", () => {
     const text = await res.text();
     expect(text).toContain("BRIDGE_URL_PLACEHOLDER");
     expect(text).toContain("BRIDGE_TOKEN_PLACEHOLDER");
+    expect(text).toContain("function defineWebSocketConstants(socket)");
+    expect(text).toContain("return defineWebSocketConstants(new ResilientWebSocket(");
+  });
+
+  it("14d — GET /_/shim/ha-frontend.js injects instance WebSocket constants", async () => {
+    await server.stop();
+    server = makeServer(echo.url, (config) => ({
+      ...config,
+      frontendProxy: {
+        ...config.frontendProxy,
+        enabled: true,
+        pathPrefix: "/",
+        bridgeToken: VALID_TOKEN,
+        upstreamProfile: "echo",
+      },
+    }));
+    await server.start();
+    baseUrl = `http://127.0.0.1:${server.port()}`;
+
+    const res = await fetch(`${baseUrl}/_/shim/ha-frontend.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/javascript");
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    const text = await res.text();
+    expect(text).toContain("function defineWebSocketConstants(socket)");
+    expect(text).toContain("return defineWebSocketConstants(new ResilientWebSocket(");
   });
 
   it("14e — auth/token requests are forwarded with form body and upstream origin", async () => {
@@ -802,7 +828,9 @@ describe("static asset routes (unauthenticated)", () => {
       expect(proxyRes.status).toBe(200);
       expect(await proxyRes.json()).toEqual({ ok: true });
       const snapshot = seen;
-      if (snapshot === null) throw new Error("upstream did not receive multipart auth/token request");
+      if (snapshot === null) {
+        throw new Error("upstream did not receive multipart auth/token request");
+      }
       expect(snapshot.contentType).toContain("multipart/form-data");
       expect(snapshot.body).toContain('name="grant_type"');
       expect(snapshot.body).toContain("authorization_code");

@@ -21,9 +21,22 @@ const BRIDGE_TOKEN = "BRIDGE_TOKEN_PLACEHOLDER";
 const UPSTREAM_PROFILE = "ha-core";
 
 const NativeWS = window.WebSocket;
+function defineWebSocketConstants(socket) {
+  for (const [key, value] of [
+    ["CONNECTING", NativeWS.CONNECTING],
+    ["OPEN", NativeWS.OPEN],
+    ["CLOSING", NativeWS.CLOSING],
+    ["CLOSED", NativeWS.CLOSED],
+  ]) {
+    if (socket[key] === undefined) {
+      Object.defineProperty(socket, key, { value, configurable: true });
+    }
+  }
+  return socket;
+}
 const wrapped = function (url, protocols) {
   if (typeof url === "string" && url.replace(/\?.*$/, "").endsWith("/api/websocket")) {
-    return new ResilientWebSocket(url, {
+    return defineWebSocketConstants(new ResilientWebSocket(url, {
       bridge: {
         bridgeUrl: BRIDGE_URL,
         authToken: BRIDGE_TOKEN,
@@ -31,7 +44,7 @@ const wrapped = function (url, protocols) {
       },
       nativeConnectTimeoutMs: 3000,
       heartbeatTimeoutMs: 30000,
-    });
+    }));
   }
   return new NativeWS(url, protocols);
 };

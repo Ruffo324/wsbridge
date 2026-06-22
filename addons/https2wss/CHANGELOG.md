@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.10 - 2026-06-22
+
+- Expose WebSocket ready-state constants (`OPEN`, `CLOSED`, etc.) on wrapped
+  Home Assistant frontend socket instances. HA checks `socket.readyState ==
+  socket.OPEN` after authentication; without instance constants the bridge
+  authenticated successfully but the UI still treated the connection as down.
+
 ## 0.1.9 - 2026-06-22
 
 - Forward Home Assistant auth callback `multipart/form-data` bodies unchanged.
