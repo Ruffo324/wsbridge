@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.12 - 2026-06-22
+
+- Switch the Home Assistant frontend shim from `ResilientWebSocket` native-first
+  probing to direct `Https2WssSocket` bridge mode for `/api/websocket`. This
+  avoids Home Assistant's cold-reload `ERR_CANNOT_CONNECT` path when the initial
+  socket attempt emits a pre-auth close/error before the bridge fallback can
+  complete.
+
 ## 0.1.11 - 2026-06-22
 
 - Pass the original native WebSocket constructor into `ResilientWebSocket` from
