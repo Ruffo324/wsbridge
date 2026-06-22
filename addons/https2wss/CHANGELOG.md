@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.13 - 2026-06-22
+
+- Fix a race in `Https2WssSocket`: if the bridge session had already reached
+  `open` before socket listeners were attached, the Home Assistant frontend shim
+  could miss the only `open` transition and stay stuck in `CONNECTING` forever.
+  The socket now synchronizes its current `session.state` immediately after
+  wiring listeners, with a regression test covering already-open sessions.
+
 ## 0.1.12 - 2026-06-22
 
 - Switch the Home Assistant frontend shim from `ResilientWebSocket` native-first

@@ -4,6 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BridgeClient } from "../src/BridgeClient.js";
 import { Https2WssSocket } from "../src/Https2WssSocket.js";
 import { startProxyWithEcho, VALID_TOKEN } from "./helpers/setupProxy.js";
 
@@ -202,4 +203,42 @@ describe("Https2WssSocket", () => {
     expect(socket.bufferedAmount).toBeGreaterThanOrEqual(0);
     socket.close();
   }, 10_000);
+
+  it("10 — already-open session still fires open when wired after upstream_open", async () => {
+    const client = new BridgeClient({ bridgeUrl: env.baseUrl, authToken: VALID_TOKEN });
+    const session = await client.openSession({
+      transport: "sse",
+      upstream: { adapter: "websocket", profile: "echo" },
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      if (session.state === "open") {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(() => reject(new Error("session open timeout")), 5000);
+      const off = session.on("state", (state) => {
+        if (state === "open") {
+          clearTimeout(timer);
+          off();
+          resolve();
+        }
+      });
+    });
+
+    const originalOpenSession = BridgeClient.prototype.openSession;
+    BridgeClient.prototype.openSession = async function () {
+      return session;
+    };
+
+    try {
+      const socket = openSocket();
+      await waitOpen(socket, 2000);
+      expect(socket.readyState).toBe(1);
+      socket.close();
+    } finally {
+      BridgeClient.prototype.openSession = originalOpenSession;
+      await session.close();
+    }
+  }, 12_000);
 });
