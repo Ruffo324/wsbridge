@@ -122,9 +122,22 @@ function isHomeAssistantWebSocketUrl(url) {
   const text = typeof url === "string" ? url : String(url && url.url ? url.url : url);
   return text.replace(/\\?.*$/, "").endsWith("/api/websocket");
 }
+function defineWebSocketConstants(socket) {
+  for (const [key, value] of [
+    ["CONNECTING", NativeWebSocket.CONNECTING],
+    ["OPEN", NativeWebSocket.OPEN],
+    ["CLOSING", NativeWebSocket.CLOSING],
+    ["CLOSED", NativeWebSocket.CLOSED],
+  ]) {
+    if (socket[key] === undefined) {
+      Object.defineProperty(socket, key, { value, configurable: true });
+    }
+  }
+  return socket;
+}
 function WrappedWebSocket(url, protocols) {
   if (isHomeAssistantWebSocketUrl(url)) {
-    return new ResilientWebSocket(String(url), {
+    return defineWebSocketConstants(new ResilientWebSocket(String(url), {
       bridge: {
         bridgeUrl: BRIDGE_URL,
         authToken: BRIDGE_TOKEN,
@@ -133,7 +146,7 @@ function WrappedWebSocket(url, protocols) {
       },
       nativeConnectTimeoutMs: NATIVE_TIMEOUT_MS,
       heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
-    });
+    }));
   }
   return new NativeWebSocket(url, protocols);
 }
