@@ -664,7 +664,14 @@ describe("static asset routes (unauthenticated)", () => {
 
   it("14e — auth/token requests are forwarded with form body and upstream origin", async () => {
     await server.stop();
-    let seen: any = null;
+    let seen: {
+      origin: string | null;
+      referer: string | null;
+      forwarded: string | null;
+      xForwardedFor: string | null;
+      contentType: string | null;
+      body: string;
+    } | null = null;
 
     const upstream = createServer((req, res) => {
       if (req.url !== "/auth/token") {
@@ -685,7 +692,11 @@ describe("static asset routes (unauthenticated)", () => {
             req.headers["content-type"] == null ? null : String(req.headers["content-type"]),
           body: Buffer.concat(chunks).toString("utf-8"),
         };
-        res.writeHead(200, { "content-type": "application/json" });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "access-control-allow-origin": upstreamUrl,
+          "access-control-allow-credentials": "true",
+        });
         res.end(JSON.stringify({ ok: true }));
       });
     });
@@ -718,8 +729,18 @@ describe("static asset routes (unauthenticated)", () => {
         body: "grant_type=authorization_code&code=foo&client_id=bar",
       });
       expect(proxyRes.status).toBe(200);
+      expect(proxyRes.headers.get("access-control-allow-origin")).toBe(baseUrl);
+      expect(proxyRes.headers.get("access-control-allow-credentials")).toBeNull();
       expect(await proxyRes.json()).toEqual({ ok: true });
-      const snapshot = seen as any;
+      const snapshot = seen as {
+        origin: string | null;
+        referer: string | null;
+        forwarded: string | null;
+        xForwardedFor: string | null;
+        contentType: string | null;
+        body: string;
+      } | null;
+      if (snapshot === null) throw new Error("upstream did not receive proxied auth/token request");
       expect(snapshot.origin).toBe(upstreamUrl);
       expect(snapshot.referer).toBe(`${upstreamUrl}/auth/authorize`);
       expect(snapshot.forwarded).toBeNull();

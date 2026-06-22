@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.8 - 2026-06-22
+
+- Prevent Home Assistant's internal `Access-Control-*` response headers from leaking
+  through the frontend proxy. The proxy now strips upstream CORS headers and
+  reflects the browser request origin, so callback token fetches are not rejected
+  when the upstream responds with `http://homeassistant:8123`.
+
 ## 0.1.7 - 2026-06-21
 
 - Strip incoming `Forwarded` and `X-Forwarded-*` headers before proxying HA

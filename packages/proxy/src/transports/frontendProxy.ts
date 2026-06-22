@@ -84,15 +84,20 @@ function copyRequestHeaders(req: FastifyRequest, config: ServerConfig): Headers 
   return headers;
 }
 
-function copyResponseHeaders(upstream: Response, reply: FastifyReply): void {
+function copyResponseHeaders(upstream: Response, reply: FastifyReply, req: FastifyRequest): void {
   upstream.headers.forEach((value, name) => {
     const lower = name.toLowerCase();
     if (HOP_BY_HOP_HEADERS.has(lower) || lower === "content-length" || lower === "content-encoding")
       return;
+    if (lower.startsWith("access-control-")) return;
     // set-cookie is handled through getSetCookie when available.
     if (lower === "set-cookie") return;
     reply.header(name, value);
   });
+  const requestOrigin = req.headers.origin;
+  if (typeof requestOrigin === "string" && requestOrigin.length > 0) {
+    reply.header("access-control-allow-origin", requestOrigin);
+  }
   const withCookies = upstream.headers as Headers & { getSetCookie?: () => string[] };
   const cookies = withCookies.getSetCookie?.() ?? [];
   if (cookies.length > 0) reply.header("set-cookie", cookies);
@@ -219,7 +224,7 @@ export function registerFrontendProxy(fastify: FastifyInstance, config: ServerCo
         throw error;
       }
 
-      copyResponseHeaders(upstream, reply);
+      copyResponseHeaders(upstream, reply, req);
       reply.code(upstream.status);
 
       if (method === "HEAD") return reply.send();
