@@ -751,6 +751,69 @@ describe("static asset routes (unauthenticated)", () => {
       await closeHttpServer(upstream);
     }
   });
+
+  it("14f — auth/token multipart FormData requests are forwarded as raw bodies", async () => {
+    await server.stop();
+    let seen: { contentType: string | null; body: string } | null = null;
+
+    const upstream = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      req.on("end", () => {
+        seen = {
+          contentType:
+            req.headers["content-type"] == null ? null : String(req.headers["content-type"]),
+          body: Buffer.concat(chunks).toString("utf-8"),
+        };
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      });
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const { port } = upstream.address() as AddressInfo;
+    const upstreamUrl = `http://127.0.0.1:${port}`;
+
+    server = makeServer(echo.url, (config) => ({
+      ...config,
+      frontendProxy: {
+        ...config.frontendProxy,
+        enabled: true,
+        pathPrefix: "/",
+        upstreamUrl,
+        bridgeToken: VALID_TOKEN,
+        upstreamProfile: "echo",
+      },
+    }));
+    await server.start();
+    baseUrl = `http://127.0.0.1:${server.port()}`;
+
+    try {
+      const form = new FormData();
+      form.append("grant_type", "authorization_code");
+      form.append("code", "foo");
+      form.append("client_id", "bar");
+
+      const proxyRes = await fetch(`${baseUrl}/auth/token`, {
+        method: "POST",
+        headers: { origin: baseUrl },
+        body: form,
+      });
+
+      expect(proxyRes.status).toBe(200);
+      expect(await proxyRes.json()).toEqual({ ok: true });
+      const snapshot = seen;
+      if (snapshot === null) throw new Error("upstream did not receive multipart auth/token request");
+      expect(snapshot.contentType).toContain("multipart/form-data");
+      expect(snapshot.body).toContain('name="grant_type"');
+      expect(snapshot.body).toContain("authorization_code");
+      expect(snapshot.body).toContain('name="code"');
+      expect(snapshot.body).toContain("foo");
+      expect(snapshot.body).toContain('name="client_id"');
+      expect(snapshot.body).toContain("bar");
+    } finally {
+      await closeHttpServer(upstream);
+    }
+  });
 });
 
 describe("GET /healthz", () => {
