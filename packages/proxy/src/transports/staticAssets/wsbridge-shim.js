@@ -42,6 +42,7 @@ const wrapped = function (url, protocols) {
         authToken: BRIDGE_TOKEN,
         upstreamProfile: UPSTREAM_PROFILE,
       },
+      webSocketCtor: NativeWS,
       nativeConnectTimeoutMs: 3000,
       heartbeatTimeoutMs: 30000,
     }));
