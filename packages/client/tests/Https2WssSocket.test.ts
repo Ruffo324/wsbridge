@@ -241,4 +241,54 @@ describe("Https2WssSocket", () => {
       await session.close();
     }
   }, 12_000);
+
+  it("11 — transient pre-open session errors do not surface as socket error before open", async () => {
+    const listeners = new Map<string, ((value: unknown) => void)[]>();
+    const fakeSession = {
+      state: "connecting",
+      bufferedAmount: 0,
+      on(event: string, listener: (value: unknown) => void) {
+        const arr = listeners.get(event) ?? [];
+        arr.push(listener);
+        listeners.set(event, arr);
+        return () => {
+          const next = (listeners.get(event) ?? []).filter((l) => l !== listener);
+          listeners.set(event, next);
+        };
+      },
+      close: async () => {},
+      sendText: async () => {},
+      sendBinary: async () => {},
+    };
+
+    const originalOpenSession = BridgeClient.prototype.openSession;
+    BridgeClient.prototype.openSession = async function () {
+      return fakeSession as never;
+    };
+
+    try {
+      const socket = openSocket();
+      let errorCount = 0;
+      socket.onerror = () => {
+        errorCount += 1;
+      };
+
+      for (const listener of listeners.get("error") ?? []) {
+        listener(new Error("transient bootstrap error"));
+      }
+      expect(errorCount).toBe(0);
+
+      fakeSession.state = "open";
+      for (const listener of listeners.get("state") ?? []) {
+        listener("open");
+      }
+
+      await waitOpen(socket, 1000);
+      expect(socket.readyState).toBe(1);
+      expect(errorCount).toBe(0);
+      socket.close();
+    } finally {
+      BridgeClient.prototype.openSession = originalOpenSession;
+    }
+  }, 12_000);
 });

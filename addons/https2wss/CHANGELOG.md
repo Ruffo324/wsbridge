@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.14 - 2026-06-23
+
+- Suppress transient `error` events from `Https2WssSocket` while the socket is
+  still in `CONNECTING`. Home Assistant treats any pre-auth socket `error` as
+  `ERR_CANNOT_CONNECT (1)` and aborts bootstrap immediately, even if the bridge
+  would have reached `open` moments later. Added a regression test for the
+  sequence "pre-open error, then open".
+
 ## 0.1.13 - 2026-06-22
 
 - Fix a race in `Https2WssSocket`: if the bridge session had already reached

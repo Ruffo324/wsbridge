@@ -251,7 +251,9 @@ export class Https2WssSocket extends EventTarget {
     });
 
     session.on("error", () => {
-      this.dispatchEvent(new Event("error"));
+      if (this._readyState !== CONNECTING) {
+        this.dispatchEvent(new Event("error"));
+      }
     });
 
     this.applySessionState(session.state);
