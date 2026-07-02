@@ -662,7 +662,7 @@ describe("static asset routes (unauthenticated)", () => {
     expect(text).toContain("BRIDGE_TOKEN_PLACEHOLDER");
     expect(text).toContain("function defineWebSocketConstants(socket)");
     expect(text).toContain("return defineWebSocketConstants(new Https2WssSocket(");
-    expect(text).toContain("transport: \"sse\"");
+    expect(text).toContain('transport: "sse"');
   });
 
   it("14d — GET /_/shim/ha-frontend.js injects instance WebSocket constants", async () => {
@@ -687,10 +687,34 @@ describe("static asset routes (unauthenticated)", () => {
     const text = await res.text();
     expect(text).toContain("function defineWebSocketConstants(socket)");
     expect(text).toContain("return defineWebSocketConstants(new Https2WssSocket(");
-    expect(text).toContain("transport: \"sse\"");
+    expect(text).toContain('const BRIDGE_TRANSPORT = "long_poll"');
+    expect(text).toContain("transport: BRIDGE_TRANSPORT");
   });
 
-  it("14e — auth/token requests are forwarded with form body and upstream origin", async () => {
+  it("14e — GET /_/shim/ha-frontend.js honors configured frontend bridge transport", async () => {
+    await server.stop();
+    server = makeServer(echo.url, (config) => ({
+      ...config,
+      frontendProxy: {
+        ...config.frontendProxy,
+        enabled: true,
+        pathPrefix: "/",
+        bridgeToken: VALID_TOKEN,
+        upstreamProfile: "echo",
+        transport: "sse",
+      },
+    }));
+    await server.start();
+    baseUrl = `http://127.0.0.1:${server.port()}`;
+
+    const res = await fetch(`${baseUrl}/_/shim/ha-frontend.js`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('const BRIDGE_TRANSPORT = "sse"');
+    expect(text).toContain("transport: BRIDGE_TRANSPORT");
+  });
+
+  it("14f — auth/token requests are forwarded with form body and upstream origin", async () => {
     await server.stop();
     let seen: {
       origin: string | null;
@@ -842,6 +866,81 @@ describe("static asset routes (unauthenticated)", () => {
       expect(snapshot.body).toContain("bar");
     } finally {
       await closeHttpServer(upstream);
+    }
+  });
+});
+
+describe("HA frontend proxy bridge route regressions", () => {
+  it("15a — frontend proxy at / does not intercept bridge SSE events with after query", async () => {
+    await server.stop();
+    const upstream = await startFrontendUpstream();
+
+    server = makeServer(echo.url, (config) => ({
+      ...config,
+      frontendProxy: {
+        ...config.frontendProxy,
+        enabled: true,
+        pathPrefix: "/",
+        upstreamUrl: upstream.url,
+        bridgeToken: VALID_TOKEN,
+        upstreamProfile: "echo",
+      },
+    }));
+    await server.start();
+    baseUrl = `http://127.0.0.1:${server.port()}`;
+
+    try {
+      const { transport } = await createSession("echo", AUTH, "sse");
+      await new Promise<void>((res) => setTimeout(res, 30));
+
+      const sseRes = await fetch(`${baseUrl}${transport.receiveUrl}?after=3`, {
+        headers: { authorization: AUTH, accept: "text/event-stream" },
+      });
+
+      expect(sseRes.status).toBe(200);
+      expect(sseRes.headers.get("content-type")).toContain("text/event-stream");
+
+      if (sseRes.body === null) throw new Error("SSE response body is null");
+      const reader = sseRes.body.getReader();
+      const { value } = await reader.read();
+      const text = new TextDecoder().decode(value);
+      expect(text).toContain(":ok");
+      await reader.cancel();
+    } finally {
+      await closeHttpServer(upstream.server);
+    }
+  });
+
+  it("15b — frontend proxy at / does not bypass bridge auth for SSE events", async () => {
+    await server.stop();
+    const upstream = await startFrontendUpstream();
+
+    server = makeServer(echo.url, (config) => ({
+      ...config,
+      frontendProxy: {
+        ...config.frontendProxy,
+        enabled: true,
+        pathPrefix: "/",
+        upstreamUrl: upstream.url,
+        bridgeToken: VALID_TOKEN,
+        upstreamProfile: "echo",
+      },
+    }));
+    await server.start();
+    baseUrl = `http://127.0.0.1:${server.port()}`;
+
+    try {
+      const { transport } = await createSession("echo", AUTH, "sse");
+      const res = await fetch(`${baseUrl}${transport.receiveUrl}?after=3`, {
+        headers: { accept: "text/event-stream" },
+      });
+
+      expect(res.status).toBe(401);
+      expect(res.headers.get("www-authenticate")).toBe("Bearer");
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("AUTH_REQUIRED");
+    } finally {
+      await closeHttpServer(upstream.server);
     }
   });
 });

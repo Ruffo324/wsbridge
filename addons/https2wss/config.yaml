@@ -1,6 +1,6 @@
 ---
 name: "https2wss"
-version: "0.1.16"
+version: "0.1.17"
 slug: "https2wss"
 description: "HTTPS/SSE-to-WebSocket bridge — lets HTTPS-only clients talk to WebSocket upstreams."
 url: "https://github.com/Ruffo324/wsbridge"
@@ -36,6 +36,7 @@ options:
   frontend_proxy_upstream_url: "http://homeassistant:8123"
   frontend_proxy_inject_websocket_shim: true
   frontend_proxy_bridge_url: ""
+  frontend_proxy_transport: "long_poll"
   frontend_proxy_native_connect_timeout_ms: 1500
   frontend_proxy_heartbeat_timeout_ms: 30000
 schema:
@@ -53,5 +54,6 @@ schema:
   frontend_proxy_upstream_url: "url"
   frontend_proxy_inject_websocket_shim: "bool"
   frontend_proxy_bridge_url: "str?"
+  frontend_proxy_transport: "list(sse|long_poll|poll)"
   frontend_proxy_native_connect_timeout_ms: "int(0,30000)"
   frontend_proxy_heartbeat_timeout_ms: "int(1000,300000)"

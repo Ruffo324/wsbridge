@@ -82,6 +82,7 @@ if ! jq -e 'has("frontend_proxy_inject_websocket_shim")' "${OPTIONS_FILE}" >/dev
   FRONTEND_PROXY_INJECT=true
 fi
 FRONTEND_PROXY_BRIDGE_URL="$(opt_str 'frontend_proxy_bridge_url')"
+FRONTEND_PROXY_TRANSPORT="$(opt_str 'frontend_proxy_transport')"
 FRONTEND_PROXY_NATIVE_TIMEOUT="$(opt_int 'frontend_proxy_native_connect_timeout_ms')"
 FRONTEND_PROXY_HEARTBEAT_TIMEOUT="$(opt_int 'frontend_proxy_heartbeat_timeout_ms')"
 
@@ -93,6 +94,14 @@ FRONTEND_PROXY_HEARTBEAT_TIMEOUT="$(opt_int 'frontend_proxy_heartbeat_timeout_ms
 [ "${MAX_FRAME}" -le 0 ]       2>/dev/null && MAX_FRAME=1048576
 [ -z "${FRONTEND_PROXY_PATH}" ]      && FRONTEND_PROXY_PATH="/"
 [ -z "${FRONTEND_PROXY_UPSTREAM}" ]  && FRONTEND_PROXY_UPSTREAM="http://homeassistant:8123"
+case "${FRONTEND_PROXY_TRANSPORT}" in
+  sse|long_poll|poll) ;;
+  "") FRONTEND_PROXY_TRANSPORT="long_poll" ;;
+  *)
+    bashio::log.warning "Invalid frontend_proxy_transport '${FRONTEND_PROXY_TRANSPORT}', falling back to long_poll."
+    FRONTEND_PROXY_TRANSPORT="long_poll"
+    ;;
+esac
 [ "${FRONTEND_PROXY_NATIVE_TIMEOUT}" -le 0 ]    2>/dev/null && FRONTEND_PROXY_NATIVE_TIMEOUT=1500
 [ "${FRONTEND_PROXY_HEARTBEAT_TIMEOUT}" -le 0 ] 2>/dev/null && FRONTEND_PROXY_HEARTBEAT_TIMEOUT=30000
 
@@ -146,6 +155,7 @@ frontendProxy:
   bridgeUrl: "${FRONTEND_PROXY_BRIDGE_URL}"
   bridgeToken: "${TOKEN}"
   upstreamProfile: "${UPSTREAM_PROFILE}"
+  transport: "${FRONTEND_PROXY_TRANSPORT}"
   nativeConnectTimeoutMs: ${FRONTEND_PROXY_NATIVE_TIMEOUT}
   heartbeatTimeoutMs: ${FRONTEND_PROXY_HEARTBEAT_TIMEOUT}
 YAML
