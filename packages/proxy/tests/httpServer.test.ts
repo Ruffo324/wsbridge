@@ -686,9 +686,11 @@ describe("static asset routes (unauthenticated)", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const text = await res.text();
     expect(text).toContain("function defineWebSocketConstants(socket)");
-    expect(text).toContain("return defineWebSocketConstants(new Https2WssSocket(");
+    expect(text).toContain("return traceSocket(defineWebSocketConstants(new Https2WssSocket(");
     expect(text).toContain('const BRIDGE_TRANSPORT = "long_poll"');
     expect(text).toContain("transport: BRIDGE_TRANSPORT");
+    expect(text).toContain("window.__HTTPS2WSS_WS_EVENTS__");
+    expect(text).toContain("function traceSocket(socket, url)");
   });
 
   it("14e — GET /_/shim/ha-frontend.js honors configured frontend bridge transport", async () => {

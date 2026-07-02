@@ -135,14 +135,44 @@ function defineWebSocketConstants(socket) {
   }
   return socket;
 }
+function recordBridgeEvent(entry) {
+  const list = window.__HTTPS2WSS_WS_EVENTS__ || [];
+  list.push({ t: Date.now(), ...entry });
+  while (list.length > 300) list.shift();
+  window.__HTTPS2WSS_WS_EVENTS__ = list;
+}
+function summarizeData(data) {
+  if (typeof data !== "string") return { kind: typeof data };
+  try {
+    const parsed = JSON.parse(data);
+    return { type: parsed.type, id: parsed.id, success: parsed.success, length: data.length };
+  } catch {
+    return { kind: "text", length: data.length };
+  }
+}
+function traceSocket(socket, url) {
+  let socketId = (window.__HTTPS2WSS_WS_NEXT_ID__ || 0) + 1;
+  window.__HTTPS2WSS_WS_NEXT_ID__ = socketId;
+  recordBridgeEvent({ socketId, event: "construct", url: String(url), readyState: socket.readyState });
+  const originalSend = socket.send.bind(socket);
+  socket.send = (data) => {
+    recordBridgeEvent({ socketId, event: "send", readyState: socket.readyState, data: summarizeData(data) });
+    return originalSend(data);
+  };
+  socket.addEventListener("open", () => recordBridgeEvent({ socketId, event: "open", readyState: socket.readyState }));
+  socket.addEventListener("message", (ev) => recordBridgeEvent({ socketId, event: "message", readyState: socket.readyState, data: summarizeData(ev.data) }));
+  socket.addEventListener("error", (ev) => recordBridgeEvent({ socketId, event: "error", readyState: socket.readyState, type: ev.type }));
+  socket.addEventListener("close", (ev) => recordBridgeEvent({ socketId, event: "close", readyState: socket.readyState, code: ev.code, reason: ev.reason, wasClean: ev.wasClean }));
+  return socket;
+}
 function WrappedWebSocket(url, protocols) {
   if (isHomeAssistantWebSocketUrl(url)) {
-    return defineWebSocketConstants(new Https2WssSocket(String(url), {
+    return traceSocket(defineWebSocketConstants(new Https2WssSocket(String(url), {
       bridgeUrl: BRIDGE_URL,
       authToken: BRIDGE_TOKEN,
       upstreamProfile: UPSTREAM_PROFILE,
       transport: BRIDGE_TRANSPORT,
-    }));
+    })), url);
   }
   return new NativeWebSocket(url, protocols);
 }

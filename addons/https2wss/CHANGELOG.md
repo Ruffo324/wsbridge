@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.18 - 2026-07-02
+
+- Add a browser-side Home Assistant WebSocket shim ring buffer at
+  `window.__HTTPS2WSS_WS_EVENTS__` for E2E diagnostics. It records socket
+  lifecycle, summarized HA message types/ids, and close/error metadata without
+  logging access tokens.
+
 ## 0.1.17 - 2026-07-02
 
 - Make the Home Assistant frontend shim receive transport configurable via
