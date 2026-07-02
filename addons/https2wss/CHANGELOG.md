@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.20 - 2026-07-02
+
+- Count active receive transports as session activity. Long-poll `/poll` requests
+  and SSE connections/heartbeats now refresh session idle timers so Home
+  Assistant navigation/settings flows do not lose quiet but actively polled
+  bridge sessions and then hit `/poll` or `/send` `404 SESSION_NOT_FOUND`.
+
 ## 0.1.19 - 2026-07-02
 
 - Serialize client-to-bridge `/send` POSTs in `BridgeSession` so bursty HA frontend
