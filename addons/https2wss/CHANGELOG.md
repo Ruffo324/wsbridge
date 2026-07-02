@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.19 - 2026-07-02
+
+- Serialize client-to-bridge `/send` POSTs in `BridgeSession` so bursty HA frontend
+  bootstrap messages preserve native WebSocket send ordering. This fixes HA E2E
+  disconnects such as `expected seq 2, got 4` / `expected seq 35, got 37`.
+
 ## 0.1.18 - 2026-07-02
 
 - Add a browser-side Home Assistant WebSocket shim ring buffer at

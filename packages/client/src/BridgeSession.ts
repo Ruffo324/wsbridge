@@ -63,6 +63,10 @@ export class BridgeSession {
   // bufferedAmount tracking: sum of content-length of pending POST bodies
   private _bufferedAmount = 0;
 
+  // Serialize client -> bridge POSTs. Native WebSocket preserves send() ordering,
+  // but fetch requests issued back-to-back may arrive at the proxy out of order.
+  private sendQueue: Promise<void> = Promise.resolve();
+
   constructor(init: BridgeSessionInit) {
     this.id = init.sessionId;
     this.init = init;
@@ -246,6 +250,16 @@ export class BridgeSession {
 
   private async postFrames(frames: BridgeEnvelope[]): Promise<void> {
     const body = JSON.stringify({ frames });
+    const task = this.sendQueue.then(() => this.postFramesNow(body));
+
+    // Keep the queue alive after a failed send so later callers receive their own
+    // failure from the closed session instead of all chaining off the first
+    // rejection. The current caller still observes the original error via task.
+    this.sendQueue = task.catch(() => {});
+    await task;
+  }
+
+  private async postFramesNow(body: string): Promise<void> {
     const sendUrl = this.toAbsolute(this.init.sendUrl);
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (this.init.authToken !== undefined) {
