@@ -156,7 +156,67 @@ describe("BridgeClient — openSession", () => {
     await session.close();
   }, 15_000);
 
-  it("4 — session close from client closes upstream", async () => {
+  it("4 — concurrent sendText calls are serialized before POST /send", async () => {
+    const sendStarts: string[] = [];
+    const sendCompletions: string[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/send") && init?.body !== undefined) {
+        const body = String(init.body);
+        const parsed = JSON.parse(body) as { frames: Array<{ seq: number }> };
+        const seq = parsed.frames[0]?.seq;
+        sendStarts.push(String(seq));
+        if (seq === 1) {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+        }
+        const response = await fetch(input, init);
+        sendCompletions.push(String(seq));
+        return response;
+      }
+      return fetch(input, init);
+    };
+
+    const client = new BridgeClient({
+      bridgeUrl: env.baseUrl,
+      authToken: VALID_TOKEN,
+      fetchImpl,
+    });
+
+    const session = await client.openSession({
+      transport: "long_poll",
+      upstream: { adapter: "websocket", profile: "echo" },
+    });
+
+    await new Promise<void>((resolve) => {
+      if (session.state === "open") {
+        resolve();
+        return;
+      }
+      const u = session.on("state", (s) => {
+        if (s === "open") {
+          u();
+          resolve();
+        }
+      });
+    });
+
+    await Promise.all([
+      session.sendText("one"),
+      session.sendText("two"),
+      session.sendText("three"),
+      session.sendText("four"),
+      session.sendText("five"),
+    ]);
+
+    expect(sendStarts).toEqual(["1", "2", "3", "4", "5"]);
+    expect(sendCompletions).toEqual(["1", "2", "3", "4", "5"]);
+    expect(session.state).toBe("open");
+
+    await session.close();
+  }, 15_000);
+
+  it("5 — session close from client closes upstream", async () => {
     const client = new BridgeClient({
       bridgeUrl: env.baseUrl,
       authToken: VALID_TOKEN,
