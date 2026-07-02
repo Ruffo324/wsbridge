@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.17 - 2026-07-02
+
+- Make the Home Assistant frontend shim receive transport configurable via
+  `frontend_proxy_transport` and default it to `long_poll`. Live HA testing showed
+  the shim creating bridge sessions but the streaming `/v1/sessions/.../events`
+  fetch failing around `after=3`; long-poll avoids fragile streaming fetch/SSE
+  behavior through restrictive browsers/proxies while keeping `sse` available.
+
 ## 0.1.16 - 2026-07-02
 
 - Revert 0.1.15 service-worker override. Live Windows/Chrome testing showed the

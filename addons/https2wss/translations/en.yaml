@@ -70,6 +70,12 @@ configuration:
     description: >-
       Optional public URL the injected shim should use for bridge calls. Leave
       empty to use the browser's current origin.
+  frontend_proxy_transport:
+    name: "Frontend bridge receive transport"
+    description: >-
+      Receive transport used by the injected Home Assistant WebSocket shim.
+      Use `long_poll` for restrictive networks and reverse proxies that break
+      streaming fetch/SSE; use `sse` only when streaming is known to be stable.
   frontend_proxy_native_connect_timeout_ms:
     name: "Native WebSocket timeout (ms)"
     description: >-

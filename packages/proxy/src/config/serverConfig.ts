@@ -46,6 +46,7 @@ const frontendProxySchema = z.object({
   bridgeUrl: z.string().default(""),
   bridgeToken: z.string().default(""),
   upstreamProfile: z.string().default("ha-core"),
+  transport: z.enum(["sse", "long_poll", "poll"]).default("long_poll"),
   nativeConnectTimeoutMs: z.number().int().nonnegative().default(1500),
   heartbeatTimeoutMs: z.number().int().positive().default(30_000),
 });
@@ -77,6 +78,7 @@ export const serverConfigSchema = z.object({
     bridgeUrl: "",
     bridgeToken: "",
     upstreamProfile: "ha-core",
+    transport: "long_poll",
     nativeConnectTimeoutMs: 1500,
     heartbeatTimeoutMs: 30_000,
   }),

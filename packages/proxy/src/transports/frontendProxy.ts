@@ -111,11 +111,13 @@ function shimScript(config: ServerConfig): string {
   const proxy = config.frontendProxy;
   const bridgeUrl = proxy.bridgeUrl || "window.location.origin";
   const bridgeUrlExpr = proxy.bridgeUrl ? escapeJsString(proxy.bridgeUrl) : bridgeUrl;
+  const bridgeTransport = proxy.transport ?? "long_poll";
   return `import { Https2WssSocket } from "/_/lib/client/index.js";
 const NativeWebSocket = window.WebSocket;
 const BRIDGE_URL = ${bridgeUrlExpr};
 const BRIDGE_TOKEN = ${escapeJsString(proxy.bridgeToken)};
 const UPSTREAM_PROFILE = ${escapeJsString(proxy.upstreamProfile)};
+const BRIDGE_TRANSPORT = ${escapeJsString(bridgeTransport)};
 function isHomeAssistantWebSocketUrl(url) {
   const text = typeof url === "string" ? url : String(url && url.url ? url.url : url);
   return text.replace(/\\?.*$/, "").endsWith("/api/websocket");
@@ -139,7 +141,7 @@ function WrappedWebSocket(url, protocols) {
       bridgeUrl: BRIDGE_URL,
       authToken: BRIDGE_TOKEN,
       upstreamProfile: UPSTREAM_PROFILE,
-      transport: "sse",
+      transport: BRIDGE_TRANSPORT,
     }));
   }
   return new NativeWebSocket(url, protocols);
