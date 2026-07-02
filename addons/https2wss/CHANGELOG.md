@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.15 - 2026-07-02
+
+- Disable Home Assistant's service worker in frontend-proxy mode. Existing HA
+  Workbox service workers can serve cached app-shell navigations for OAuth
+  callback URLs and cause duplicate/stale `/auth/token` exchanges, visible as
+  `StrategyHandler.js` frames and numeric frontend error `2`. The proxy now
+  serves an unregistering `/service_worker.js`, clears browser caches, and the
+  injected frontend shim unregisters old service workers best-effort.
+
 ## 0.1.14 - 2026-06-23
 
 - Suppress transient `error` events from `Https2WssSocket` while the socket is

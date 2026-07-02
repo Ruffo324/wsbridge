@@ -685,9 +685,39 @@ describe("static asset routes (unauthenticated)", () => {
     expect(res.headers.get("content-type")).toContain("application/javascript");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const text = await res.text();
+    expect(text).toContain("disableHomeAssistantServiceWorker");
+    expect(text).toContain("navigator.serviceWorker.getRegistrations");
+    expect(text).toContain("caches.keys");
     expect(text).toContain("function defineWebSocketConstants(socket)");
     expect(text).toContain("return defineWebSocketConstants(new Https2WssSocket(");
     expect(text).toContain("transport: \"sse\"");
+  });
+
+  it("14d2 — frontend proxy disables Home Assistant's service worker", async () => {
+    await server.stop();
+    server = makeServer(echo.url, (config) => ({
+      ...config,
+      frontendProxy: {
+        ...config.frontendProxy,
+        enabled: true,
+        pathPrefix: "/",
+        bridgeToken: VALID_TOKEN,
+        upstreamProfile: "echo",
+      },
+    }));
+    await server.start();
+    baseUrl = `http://127.0.0.1:${server.port()}`;
+
+    const res = await fetch(`${baseUrl}/service_worker.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/javascript");
+    expect(res.headers.get("cache-control")).toContain("no-store");
+    expect(res.headers.get("service-worker-allowed")).toBe("/");
+    expect(res.headers.get("clear-site-data")).toBe('"cache"');
+    const text = await res.text();
+    expect(text).toContain("self.registration.unregister");
+    expect(text).toContain("caches.keys");
+    expect(text).toContain("client.navigate(client.url)");
   });
 
   it("14e — auth/token requests are forwarded with form body and upstream origin", async () => {
