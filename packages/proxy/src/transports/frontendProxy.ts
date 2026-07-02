@@ -116,6 +116,22 @@ const NativeWebSocket = window.WebSocket;
 const BRIDGE_URL = ${bridgeUrlExpr};
 const BRIDGE_TOKEN = ${escapeJsString(proxy.bridgeToken)};
 const UPSTREAM_PROFILE = ${escapeJsString(proxy.upstreamProfile)};
+async function disableHomeAssistantServiceWorker() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+  } catch {
+    // Best effort only: the WebSocket bridge must still install even when a
+    // browser blocks cache/service-worker APIs.
+  }
+}
+void disableHomeAssistantServiceWorker();
 function isHomeAssistantWebSocketUrl(url) {
   const text = typeof url === "string" ? url : String(url && url.url ? url.url : url);
   return text.replace(/\\?.*$/, "").endsWith("/api/websocket");
@@ -151,6 +167,33 @@ WrappedWebSocket.CLOSED = NativeWebSocket.CLOSED;
 WrappedWebSocket.prototype = NativeWebSocket.prototype;
 window.WebSocket = WrappedWebSocket;
 window.__HTTPS2WSS_HA_FRONTEND_PROXY__ = { enabled: true, upstreamProfile: UPSTREAM_PROFILE };
+`;
+}
+
+function disabledServiceWorkerScript(): string {
+  return `self.addEventListener("install", (event) => {
+  self.skipWaiting();
+  event.waitUntil((async () => {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch {}
+  })());
+});
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch {}
+    try { await self.registration.unregister(); } catch {}
+    try {
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of clients) client.navigate(client.url);
+    } catch {}
+  })());
+});
+self.addEventListener("fetch", () => {});
 `;
 }
 
@@ -204,6 +247,18 @@ export function registerFrontendProxy(fastify: FastifyInstance, config: ServerCo
         "access-control-allow-origin": "*",
       })
       .send(shimScript(config));
+  });
+
+  fastify.get("/service_worker.js", async (_req, reply) => {
+    return reply
+      .code(200)
+      .headers({
+        "content-type": "text/javascript; charset=utf-8",
+        "cache-control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "service-worker-allowed": "/",
+        "clear-site-data": '"cache"',
+      })
+      .send(disabledServiceWorkerScript());
   });
 
   fastify.route({
