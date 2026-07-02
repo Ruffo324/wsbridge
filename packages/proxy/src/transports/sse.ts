@@ -8,12 +8,13 @@ import type { SessionManager } from "../sessions/SessionManager.js";
 export interface SseDeps {
   config: ServerConfig;
   sessionManager: SessionManager;
+  clock: () => number;
   /** CorsPolicy is needed because reply.hijack() bypasses @fastify/cors. */
   corsPolicy?: CorsPolicy;
 }
 
 export function registerSse(fastify: FastifyInstance, deps: SseDeps): void {
-  const { config, sessionManager } = deps;
+  const { config, sessionManager, clock } = deps;
   const heartbeatIntervalMs = config.transports.sse.heartbeatIntervalMs;
   // Build a CorsPolicy from config if one wasn't injected. Needed because
   // reply.hijack() bypasses the @fastify/cors plugin's response hooks.
@@ -25,6 +26,7 @@ export function registerSse(fastify: FastifyInstance, deps: SseDeps): void {
     if (session === undefined) {
       throw new BridgeError("SESSION_NOT_FOUND", `session ${id} not found`);
     }
+    session.touch(clock());
 
     // Determine replay position: prefer Last-Event-ID header, then `after` query param
     const lastEventId = req.headers["last-event-id"];
@@ -54,6 +56,7 @@ export function registerSse(fastify: FastifyInstance, deps: SseDeps): void {
       ...corsHeaders,
     });
     raw.write(":ok\n\n");
+    session.touch(clock());
 
     // Replay buffered frames since `after`
     for (const envelope of session.buffer.since(after)) {
@@ -63,6 +66,7 @@ export function registerSse(fastify: FastifyInstance, deps: SseDeps): void {
     // Heartbeat
     const heartbeat = setInterval(() => {
       raw.write(`: heartbeat ${new Date().toISOString()}\n\n`);
+      session.touch(clock());
     }, heartbeatIntervalMs);
 
     let done = false;
@@ -72,6 +76,7 @@ export function registerSse(fastify: FastifyInstance, deps: SseDeps): void {
       if (ev.type === "outbound_frame") {
         const envelope = ev.envelope;
         raw.write(`id: ${envelope.seq}\nevent: frame\ndata: ${JSON.stringify(envelope)}\n\n`);
+        session.touch(clock());
         // On close frame, signal terminal state
         if (envelope.kind === "close") {
           done = true;

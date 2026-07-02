@@ -337,6 +337,73 @@ describe("echo via long-poll", () => {
     expect(payload.opcode).toBe("text");
     expect(payload.data).toBe("hello");
   });
+
+  it("6 — active long-poll requests keep an otherwise quiet session alive", async () => {
+    const localEcho = await startEchoServer();
+    const localServer = makeServer(localEcho.url, (config) => ({
+      ...config,
+      sessions: {
+        ...config.sessions,
+        idleTimeoutMs: 80,
+        tickIntervalMs: 10,
+      },
+      transports: {
+        ...config.transports,
+        longPoll: { maxTimeoutMs: 30 },
+      },
+    }));
+
+    try {
+      await localServer.start();
+      const localBaseUrl = `http://127.0.0.1:${localServer.port()}`;
+
+      const createRes = await fetch(`${localBaseUrl}/v1/sessions`, {
+        method: "POST",
+        headers: { authorization: AUTH, "content-type": "application/json" },
+        body: JSON.stringify({
+          protocol: "https2wss",
+          version: 1,
+          transport: { mode: "long_poll", fallbacks: [] },
+          upstream: { adapter: "websocket", profile: "echo" },
+        }),
+      });
+      expect(createRes.ok).toBe(true);
+      const created = (await createRes.json()) as { sessionId: string };
+
+      let after = 0;
+      for (let i = 0; i < 8; i += 1) {
+        const pollRes = await fetch(
+          `${localBaseUrl}/v1/sessions/${created.sessionId}/poll?after=${after}&timeoutMs=30`,
+          { headers: { authorization: AUTH } },
+        );
+        expect(pollRes.status).toBe(200);
+        const body = (await pollRes.json()) as { nextAfter: number };
+        after = body.nextAfter;
+        await new Promise<void>((res) => setTimeout(res, 20));
+      }
+
+      const envelope: BridgeEnvelope = {
+        v: 1,
+        sid: created.sessionId,
+        seq: 1,
+        kind: "data",
+        ts: new Date().toISOString(),
+        payload: { opcode: "text", encoding: "utf8", data: "still-alive", fin: true },
+      };
+      const sendRes = await fetch(`${localBaseUrl}/v1/sessions/${created.sessionId}/send`, {
+        method: "POST",
+        headers: { authorization: AUTH, "content-type": "application/json" },
+        body: JSON.stringify({ frames: [envelope] }),
+      });
+      expect(sendRes.status).toBe(200);
+    } finally {
+      await localServer.stop();
+      for (const client of localEcho.wss.clients) {
+        client.terminate();
+      }
+      await new Promise<void>((res) => localEcho.wss.close(() => res()));
+    }
+  });
 });
 
 describe("echo via SSE", () => {

@@ -7,10 +7,11 @@ import type { SessionManager } from "../sessions/SessionManager.js";
 export interface PollDeps {
   config: ServerConfig;
   sessionManager: SessionManager;
+  clock: () => number;
 }
 
 export function registerPoll(fastify: FastifyInstance, deps: PollDeps): void {
-  const { config, sessionManager } = deps;
+  const { config, sessionManager, clock } = deps;
   const maxTimeoutMs = config.transports.longPoll.maxTimeoutMs;
 
   fastify.get("/v1/sessions/:id/poll", async (req, reply) => {
@@ -19,6 +20,7 @@ export function registerPoll(fastify: FastifyInstance, deps: PollDeps): void {
     if (session === undefined) {
       throw new BridgeError("SESSION_NOT_FOUND", `session ${id} not found`);
     }
+    session.touch(clock());
 
     const query = req.query as { after?: string; timeoutMs?: string };
     const after = query.after !== undefined ? parseInt(query.after, 10) : 0;
@@ -29,6 +31,7 @@ export function registerPoll(fastify: FastifyInstance, deps: PollDeps): void {
     const immediate = session.buffer.since(after);
     if (immediate.length > 0) {
       const nextAfter = immediate[immediate.length - 1]?.seq ?? after;
+      session.touch(clock());
       return reply.send({ frames: immediate, nextAfter, state: session.state });
     }
 
@@ -83,6 +86,7 @@ export function registerPoll(fastify: FastifyInstance, deps: PollDeps): void {
       });
     });
 
+    session.touch(clock());
     return reply.send({ frames, nextAfter, state: session.state });
   });
 }

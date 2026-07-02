@@ -150,9 +150,9 @@ export function createHttpServer(deps: HttpServerDeps): HttpServer {
 
   registerSend(fastify, { sessionManager, adapterMap, clock });
 
-  registerPoll(fastify, { config, sessionManager });
+  registerPoll(fastify, { config, sessionManager, clock });
 
-  registerSse(fastify, { config, sessionManager });
+  registerSse(fastify, { config, sessionManager, clock });
 
   registerClose(fastify, { sessionManager, adapterMap });
 
